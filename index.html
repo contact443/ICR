@@ -103,6 +103,20 @@
         background: #E8EDF5;
         color: #244C91;
       }
+      /* Pagination page-size / jump-to-page selects: hide native arrow, draw a
+         chevron-down 8px in from the right edge (so there's 8px of padding
+         after the arrow). Width auto so the select shrinks to its content. */
+      .bvp-page-select {
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234C5863' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        padding-right: 32px;
+        width: auto;
+        min-width: 0;
+      }
     </style>
   </head>
   <body>
@@ -354,9 +368,9 @@
         };
         const variants = {
           primary: "bg-primary-500 text-white hover:bg-primary-focused active:bg-primary-700 disabled:bg-[#E5E6E8] disabled:text-[#4C5863]",
-          secondary: "bg-white text-primary-500 border border-primary-500 hover:bg-primary-25 active:bg-primary-50 disabled:border-ink-200 disabled:text-ink-400",
-          ghost: "bg-transparent text-primary-500 hover:bg-primary-25 active:bg-primary-50 disabled:text-ink-400",
-          danger: "bg-white text-ink-600 hover:bg-ink-50",
+          secondary: "bg-white text-primary-500 border border-[#A3B6D7] hover:bg-primary-25 active:bg-primary-50 disabled:bg-[#E5E6E8] disabled:border-[#E5E6E8] disabled:text-[#4C5863]",
+          ghost: "bg-transparent text-primary-500 hover:bg-primary-25 active:bg-primary-50 disabled:bg-[#E5E6E8] disabled:text-[#4C5863]",
+          danger: "bg-white text-ink-600 hover:bg-ink-50 disabled:bg-[#E5E6E8] disabled:text-[#4C5863]",
         };
         return (
           <button type={type} onClick={onClick} disabled={disabled}
@@ -419,8 +433,10 @@
 
       // Tooltip variant that only shows when the inner text is actually truncated
       // (i.e. scrollWidth > clientWidth). Wraps a single text child and renders it
-      // with the standard truncate classes applied to a child span.
-      const TruncationTooltip = ({ text, className = "", innerClassName = "" }) => {
+      // with the standard truncate classes applied to a child span. Optionally a
+      // `display` JSX can be passed to render something different (e.g. a
+      // highlighted version of the text) while keeping the plain tooltip string.
+      const TruncationTooltip = ({ text, display, className = "", innerClassName = "" }) => {
         const [visible, setVisible] = useState(false);
         const [pos, setPos] = useState({ top: 0, left: 0 });
         const wrapRef = useRef(null);
@@ -451,7 +467,7 @@
                 ref={textRef}
                 className={`truncate block min-w-0 w-full ${innerClassName}`}
               >
-                {text}
+                {display ?? text}
               </span>
             </span>
             {visible && ReactDOM.createPortal(
@@ -536,7 +552,7 @@
               className={`relative h-8 pl-3 pr-8 text-left text-[14px] leading-5 tracking-[0.018em] text-ink-900 bg-white border ${dirty ? "border-ink-500" : "border-ink-200"} rounded hover:border-ink-400 focus:border-primary-500 focus:outline-none disabled:bg-ink-50 disabled:text-ink-400`}
             >
               <span className={!options.find((o) => o.value === value) ? "text-ink-400" : ""}>{selectedLabel}</span>
-              <Icon name="chevron-down" size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-600" />
+              <Icon name={open ? "chevron-up" : "chevron-down"} size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-600" />
             </button>
             {open && ReactDOM.createPortal(
               <div
@@ -544,15 +560,31 @@
                 className="fixed z-[9999] bg-white border border-ink-100 rounded shadow-dropdown py-1 max-h-60 overflow-auto bvp-scroll bvp-animate-in"
                 style={{ top: pos.top, left: pos.left, width: pos.width }}
               >
-                {options.map((o) => (
-                  <div
-                    key={o.value}
-                    onClick={() => { onChange?.(o.value); setOpen(false); }}
-                    className={`px-3 py-1.5 text-[14px] leading-5 cursor-pointer bvp-row-hover ${value === o.value ? "text-primary-500 font-semibold bg-primary-25" : "text-ink-900"}`}
-                  >
-                    {o.label}
-                  </div>
-                ))}
+                {options.map((o) => {
+                  const isDisabled = !!o.disabled;
+                  const baseRow = (
+                    <div
+                      key={o.value}
+                      onClick={() => { if (isDisabled) return; onChange?.(o.value); setOpen(false); }}
+                      className={`px-3 py-1.5 text-[14px] leading-5 ${isDisabled ? "cursor-not-allowed text-ink-400" : "cursor-pointer bvp-row-hover"} flex items-center gap-2 ${value === o.value ? "text-primary-500 font-semibold bg-primary-25" : (isDisabled ? "" : "text-ink-900")}`}
+                    >
+                      <span>{o.label}</span>
+                      {o.warning && !isDisabled && (
+                        <PortalTooltip text={o.warning} className="group ml-auto">
+                          <Icon name="warning-circle" size={14} className="text-[#7F888F] group-hover:text-[#244C91] transition-colors" />
+                        </PortalTooltip>
+                      )}
+                    </div>
+                  );
+                  if (isDisabled && o.disabledTooltip) {
+                    return (
+                      <PortalTooltip key={o.value} text={o.disabledTooltip} className="w-full">
+                        {baseRow}
+                      </PortalTooltip>
+                    );
+                  }
+                  return baseRow;
+                })}
               </div>,
               document.body
             )}
@@ -704,7 +736,7 @@
         {
           id: "ss",
           name: "Sales Schedule",
-          assignedTo: "(805) 234-8129",
+          assignedTo: "(805) 234-8129, (805) 234-5534",
           defaultRoute: "Attendant [8022]",
           awayRoute: "Ring Some [8856]",
           timeSlots: [
@@ -718,7 +750,7 @@
           id: "mo",
           name: "Management Office",
           hasHolidays: true,
-          assignedTo: "(805) 123-8525",
+          assignedTo: "(805) 654-2222",
           defaultRoute: "Conference Room 4 Line 1 [1004]",
           awayRoute: "N/A",
           timeSlots: [],
@@ -765,8 +797,9 @@
           datesOrDays: "First Monday of August",
           recurrence: "Yearly",
           duration: "All day",
-          destination: "Holiday VM [8894]",
+          destination: "Holiday Greeting [2243]",
           destValue: "holiday-2243",
+          ongoing: true,
           editSource: { recurrence: "yearly", dateConfig: "movable", occurrence: "first", movableDay: "Monday", month: "8", timeConfig: "allday" },
         },
         {
@@ -844,7 +877,7 @@
         {
           id: "am-office",
           name: "Office Manager",
-          destination: "Holiday VM [8894]",
+          destination: "Holiday Greeting [2243]",
           destValue: "holiday-2243",
           toggleDestination: "Toggle2 [5678]",
           expiresHours: 2,
@@ -854,8 +887,8 @@
         {
           id: "am-dept",
           name: "Department Assignee",
-          destination: "Holiday VM [8894]",
-          destValue: "holiday-2243",
+          destination: "Front Desk [3390]",
+          destValue: "front-3390",
           toggleDestination: "Toggle3 [9000]",
           expiresHours: 24,
           expiresMinutes: 0,
@@ -989,7 +1022,15 @@
         };
         const onDelete = (s) => {
           if (!confirm(`Delete scheduler "${s.name}"?`)) return;
-          setSchedulers((ss) => ss.filter((x) => x.id !== s.id));
+          setSchedulers((ss) => {
+            const remaining = ss.filter((x) => x.id !== s.id);
+            // If we just removed the only default scheduler, promote the first remaining
+            // scheduler so the list always has exactly one default.
+            if (s.isDefault && remaining.length && !remaining.some((x) => x.isDefault)) {
+              return remaining.map((x, i) => (i === 0 ? { ...x, isDefault: true } : x));
+            }
+            return remaining;
+          });
           // Unassign any DIDs that were pointing to this scheduler.
           setDids((ds) => ds.map((d) => (d.schedulerId === s.id ? { ...d, schedulerId: null } : d)));
           // Remove this scheduler from any Away Mode rule's assignment list.
@@ -1064,11 +1105,15 @@
             // fields from the draft (defaultRoute, timeSlots, holidays, etc.) then apply form data.
             const base = editingScheduler || {};
             const newId = `s-${Date.now()}`;
+            // Enforce: at least one scheduler must be default. If this is the first scheduler
+            // (empty list) it is forced to be the default regardless of the user's choice.
+            const mustBeDefault = schedulers.length === 0;
             const newS = {
               ...base,
               ...data,
               id: newId,
               name: data.name || "New Scheduler",
+              isDefault: mustBeDefault ? true : !!data.isDefault,
             };
             // If this scheduler is being flagged as default, clear isDefault on any other scheduler.
             setSchedulers((ss) => {
@@ -1095,7 +1140,7 @@
                 <div className="px-[100px] pt-8 pb-12">
                   <div className="flex items-center gap-2 mb-6">
                     <h1 className="font-display text-[20px] font-medium leading-6 text-ink-900">Incoming Call Routing</h1>
-                    <Icon name="info" size={16} className="text-ink-500" />
+                    <Icon name="info" size={16} className="text-[#7F888F]" />
                   </div>
                   <div className="bg-white rounded-lg shadow-card">
                     <Tabs active={activeTab} onChange={setActiveTab} />
@@ -1117,6 +1162,7 @@
                           highlightedIds={highlightedIds}
                           locationHolidays={locationHolidays}
                           dids={dids}
+                          awayRules={awayRules}
                         />
                       )}
                       {activeTab === "dids" && (
@@ -1179,6 +1225,10 @@
               scheduler={editingScheduler}
               onSave={onSaveScheduler}
               locationHolidaysCatalog={locationHolidays}
+              dids={dids}
+              schedulersCount={schedulers.length}
+              isOnlyDefault={!!editingScheduler && editingScheduler.isDefault && schedulers.filter((s) => s.isDefault).length <= 1}
+              awayRules={awayRules}
             />
             <ChangeSchedulerModal
               open={changeSchedulerModal.open}
@@ -1264,16 +1314,25 @@
               open={awayModal.open}
               editing={awayModal.editing}
               schedulers={schedulers}
+              awayRules={awayRules}
               onClose={() => setAwayModal({ open: false, editing: null })}
               onSave={(data) => {
-                if (data.id) {
-                  setAwayRules((rs) => rs.map((r) => (r.id === data.id ? { ...r, ...data } : r)));
-                  showToast(`Updated "${data.name}"`);
-                } else {
+                // Enforce "one Away Mode rule per scheduler": any scheduler assigned
+                // to this rule is removed from every other rule's assignment list.
+                const ownedIds = new Set(data.schedulerIds || []);
+                setAwayRules((rs) => {
+                  const stripped = rs.map((r) => {
+                    if (data.id && r.id === data.id) return r;
+                    const nextIds = (r.schedulerIds || []).filter((sid) => !ownedIds.has(sid));
+                    return nextIds.length === (r.schedulerIds || []).length ? r : { ...r, schedulerIds: nextIds };
+                  });
+                  if (data.id) {
+                    return stripped.map((r) => (r.id === data.id ? { ...r, ...data } : r));
+                  }
                   const newRule = { ...data, id: `am-${Date.now()}` };
-                  setAwayRules((rs) => [newRule, ...rs]);
-                  showToast(`Created "${data.name}"`);
-                }
+                  return [newRule, ...stripped];
+                });
+                showToast(data.id ? `Updated "${data.name}"` : `Created "${data.name}"`);
                 setAwayModal({ open: false, editing: null });
               }}
             />
@@ -1450,7 +1509,7 @@
       const SchedulersTab = ({
         schedulers, totalCount, searchQuery, onSearchChange, expanded, onExpand,
         expandedSection, onExpandSection, onNew, onEdit, onDuplicate, onDelete,
-        highlightedIds, locationHolidays, dids,
+        highlightedIds, locationHolidays, dids, awayRules,
       }) => {
         const unassignedNumbers = (dids || []).filter((d) => !d.schedulerId).map((d) => d.number);
         return (
@@ -1476,7 +1535,7 @@
               <input
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search scheduler"
+                placeholder="Search"
                 className="w-full h-9 pl-9 pr-3 border border-ink-200 rounded text-[14px] bg-white focus:border-primary-500 focus:outline-none placeholder:text-ink-400"
               />
             </div>
@@ -1513,6 +1572,7 @@
                 onDelete={() => onDelete(s)}
                 isHighlighted={!!(highlightedIds && highlightedIds[s.id])}
                 locationHolidays={locationHolidays}
+                awayRules={awayRules}
               />
             ))}
           </div>
@@ -1522,11 +1582,38 @@
 
       const highlightMatch = (text, q) => {
         if (!q || !q.trim()) return text;
-        const idx = text.toLowerCase().indexOf(q.toLowerCase());
-        if (idx === -1) return text;
-        const before = text.slice(0, idx);
-        const match  = text.slice(idx, idx + q.length);
-        const after  = text.slice(idx + q.length);
+        const qLower = q.toLowerCase();
+        const tLower = text.toLowerCase();
+        // 1) Direct substring match highlights the exact substring
+        const idx = tLower.indexOf(qLower);
+        if (idx !== -1) {
+          const before = text.slice(0, idx);
+          const match  = text.slice(idx, idx + q.length);
+          const after  = text.slice(idx + q.length);
+          return (<>{before}<mark className="bg-warning-50 text-ink-900 rounded-sm px-0.5">{match}</mark>{after}</>);
+        }
+        // 2) Stripped-phone fallback: ignore brackets/spaces/hyphens both in
+        //    the query and the text, then map the stripped match back onto the
+        //    original span so something like "8051" highlights "805) 123-8" in
+        //    "(805) 123-8525".
+        const stripRe = /[()\s-]/;
+        const qStripped = qLower.replace(/[()\s-]/g, "");
+        if (!qStripped) return text;
+        const map = [];
+        let stripped = "";
+        for (let i = 0; i < tLower.length; i++) {
+          if (!stripRe.test(tLower[i])) {
+            map.push(i);
+            stripped += tLower[i];
+          }
+        }
+        const sIdx = stripped.indexOf(qStripped);
+        if (sIdx === -1) return text;
+        const origStart = map[sIdx];
+        const origEnd = map[sIdx + qStripped.length - 1] + 1;
+        const before = text.slice(0, origStart);
+        const match  = text.slice(origStart, origEnd);
+        const after  = text.slice(origEnd);
         return (<>{before}<mark className="bg-warning-50 text-ink-900 rounded-sm px-0.5">{match}</mark>{after}</>);
       };
 
@@ -1603,9 +1690,10 @@
               >
                 <div
                   onClick={() => { onChangeScheduler(did.number); setOpen(false); }}
-                  className="px-3 py-2 text-[14px] text-ink-900 cursor-pointer bvp-row-hover"
+                  className="px-3 py-2 text-[14px] text-ink-900 cursor-pointer bvp-row-hover flex items-center gap-3"
                 >
-                  Change Scheduler
+                  <Icon name="edit" size={16} className="text-ink-700" />
+                  <span>Change Scheduler</span>
                 </div>
               </div>,
               document.body
@@ -1691,17 +1779,23 @@
         const enriched = useMemo(() =>
           dids.map((d) => {
             const s = d.schedulerId ? schedulerById.get(d.schedulerId) : null;
-            return { ...d, schedulerName: s ? s.name : null };
+            // Destination reflects the assigned scheduler's default route; fallback to the DID's own destination if unassigned.
+            const destination = s && s.defaultRoute ? s.defaultRoute : d.destination;
+            return { ...d, schedulerName: s ? s.name : null, destination };
           }),
         [dids, schedulerById]);
 
         const filtered = useMemo(() => {
           let rows = enriched;
           const q = search.trim().toLowerCase();
+          // Strip brackets/spaces/hyphens so "8051" matches "(805) 123-8525"
+          const stripPhone = (s) => (s || "").toLowerCase().replace(/[()\s-]/g, "");
+          const qStripped = stripPhone(q);
           if (q) {
             rows = rows.filter((r) => {
               return (
                 r.number.toLowerCase().includes(q) ||
+                stripPhone(r.number).includes(qStripped) ||
                 (r.schedulerName || "").toLowerCase().includes(q)
               );
             });
@@ -1750,8 +1844,23 @@
           );
         };
 
+        const unassignedNumbers = (dids || []).filter((d) => !d.schedulerId).map((d) => d.number);
+
         return (
           <div className="pt-6">
+            {/* Warning — same yellow banner as the Schedulers tab */}
+            {unassignedNumbers.length > 0 && (
+              <div className="mb-6 min-h-12 py-3 bg-warning-50 border border-warning-500/40 rounded flex items-start gap-3 px-5">
+                <Icon name="warning" size={22} className="text-warning-500 shrink-0 mt-0.5" />
+                <p className="text-[14px] leading-5 text-ink-800">
+                  <span>{unassignedNumbers.length === 1 ? "The following number is not assigned to a scheduler: " : "The following numbers are not assigned to a scheduler: "}</span>
+                  <span className="font-semibold">{unassignedNumbers.join(", ")}</span>
+                  <br />
+                  <span>{unassignedNumbers.length === 1 ? "Please select a scheduler and assign the number. Until then, the number will route to the default scheduler." : "Please select a scheduler and assign the numbers. Until then, the numbers will route to the default scheduler."}</span>
+                </p>
+              </div>
+            )}
+
             {/* Count + search + download button */}
             <div className="flex items-center gap-5">
               <div className="text-[16px] font-semibold leading-6 text-ink-900 whitespace-nowrap">{dids.length} DIDs available</div>
@@ -1766,7 +1875,7 @@
               </div>
               <button
                 title="Download as CSV"
-                className="w-10 h-[34px] inline-flex items-center justify-center border border-primary-500 text-primary-500 rounded hover:bg-primary-25 active:bg-primary-50"
+                className="w-10 h-[34px] inline-flex items-center justify-center border border-[#A3B6D7] text-primary-500 rounded hover:bg-primary-25 active:bg-primary-50"
               >
                 <Icon name="download-cloud" size={20} />
               </button>
@@ -1805,12 +1914,18 @@
                         key={d.number}
                         className={`grid grid-cols-[repeat(3,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}
                       >
-                        <div className="pl-7 pr-3 text-[14px] text-ink-900 truncate">{highlightMatch(d.number, search)}</div>
-                        <div className="px-3 text-[14px] text-ink-700 truncate">
-                          {d.schedulerName ? highlightMatch(d.schedulerName, search) : <span className="text-ink-400">N/A</span>}
+                        <div className="pl-7 pr-3 text-[14px] text-ink-900 min-w-0">
+                          <TruncationTooltip text={d.number} display={highlightMatch(d.number, search)} className="w-full" />
                         </div>
-                        <div className="px-3 text-[14px] text-ink-700 truncate">
-                          {d.destination ? d.destination : <span className="text-ink-400">N/A</span>}
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
+                          {d.schedulerName
+                            ? <TruncationTooltip text={d.schedulerName} display={highlightMatch(d.schedulerName, search)} className="w-full" />
+                            : <span className="text-ink-400">N/A</span>}
+                        </div>
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
+                          {d.destination
+                            ? <TruncationTooltip text={d.destination} className="w-full" />
+                            : <span className="text-ink-400">N/A</span>}
                         </div>
                         <div className="flex justify-center">
                           <DIDRowMenu did={d} onChangeScheduler={onChangeScheduler} />
@@ -1827,7 +1942,7 @@
                     <select
                       value={rowsPerPage}
                       onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                      className="h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
+                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
                     >
                       {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
                     </select>
@@ -1838,7 +1953,7 @@
                     <select
                       value={safePage}
                       onChange={(e) => setPage(Number(e.target.value))}
-                      className="h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none min-w-[56px]"
+                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none min-w-[56px]"
                     >
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>{n}</option>
@@ -1972,7 +2087,7 @@
               onClick={() => { setOpen(false); onDelete(holiday.id); }}
               className="w-full px-3 h-9 flex items-center gap-3 text-[14px] text-ink-900 hover:bg-ink-50"
             >
-              <Icon name="delete-outline" size={16} className="text-ink-700" />
+              <Icon name="trash" size={16} className="text-ink-700" />
               <span>Delete</span>
             </button>
           </div>,
@@ -1996,7 +2111,8 @@
 
       const LocationHolidaysTab = ({ locationHolidays, schedulers, onNew, onEdit, onDelete }) => {
         const [search, setSearch] = useState("");
-        const [sortBy, setSortBy] = useState({ field: "name", dir: "asc" });
+        // Default order: unsorted (reflects insertion order — last added at top)
+        const [sortBy, setSortBy] = useState({ field: null, dir: "asc" });
         const [rowsPerPage, setRowsPerPage] = useState(10);
         const [page, setPage] = useState(1);
 
@@ -2027,13 +2143,15 @@
               (r.assignedSchedulers || []).some((n) => n.toLowerCase().includes(q))
             ));
           }
-          rows = [...rows].sort((a, b) => {
-            const k = sortBy.field;
-            const av = (a[k] || "").toString();
-            const bv = (b[k] || "").toString();
-            const c = av.localeCompare(bv);
-            return sortBy.dir === "asc" ? c : -c;
-          });
+          if (sortBy.field) {
+            rows = [...rows].sort((a, b) => {
+              const k = sortBy.field;
+              const av = (a[k] || "").toString();
+              const bv = (b[k] || "").toString();
+              const c = av.localeCompare(bv);
+              return sortBy.dir === "asc" ? c : -c;
+            });
+          }
           return rows;
         }, [enriched, search, sortBy]);
 
@@ -2124,23 +2242,34 @@
                   {pageRows.length === 0 ? (
                     <div className="py-12 text-center text-[14px] text-ink-500">No holidays match your search</div>
                   ) : (
-                    pageRows.map((h, i) => (
+                    pageRows.map((h, i) => {
+                      return (
                       <div
                         key={h.id}
                         className={`grid grid-cols-[repeat(6,minmax(0,1fr))_90px] min-h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}
                       >
-                        <div className="pl-7 pr-3 py-2 text-[14px] text-ink-900 font-semibold truncate" title={h.name}>{highlightMatch(h.name, search)}</div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 truncate" title={h.datesOrDays}>{h.datesOrDays}</div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 truncate" title={h.recurrence}>{h.recurrence}</div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 truncate" title={h.duration}>{h.duration}</div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 truncate" title={h.destination}>{h.destination}</div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700">
+                        <div className="pl-7 pr-3 py-2 text-[14px] text-ink-900 min-w-0">
+                          <TruncationTooltip text={h.name} display={highlightMatch(h.name, search)} className="w-full" />
+                        </div>
+                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                          <TruncationTooltip text={h.datesOrDays} className="w-full" />
+                        </div>
+                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                          <TruncationTooltip text={h.recurrence} className="w-full" />
+                        </div>
+                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                          <TruncationTooltip text={h.duration} className="w-full" />
+                        </div>
+                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                          <TruncationTooltip text={h.destination} className="w-full" />
+                        </div>
+                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
                           {h.assignedSchedulers.length === 0
                             ? <span className="text-ink-400">N/A</span>
                             : (
-                              <div className="flex flex-col gap-0.5" title={h.assignedSchedulers.join(", ")}>
+                              <div className="flex flex-col gap-0.5 min-w-0">
                                 {h.assignedSchedulers.slice(0, 2).map((n, idx) => (
-                                  <span key={idx} className="truncate">{highlightMatch(n, search)}</span>
+                                  <TruncationTooltip key={idx} text={n} display={highlightMatch(n, search)} className="w-full" />
                                 ))}
                                 {h.assignedSchedulers.length > 2 && (
                                   <span className="text-ink-500 text-[12px]">+{h.assignedSchedulers.length - 2} more</span>
@@ -2153,7 +2282,8 @@
                           <LocationHolidayRowMenu holiday={h} onEdit={onEdit} onDelete={onDelete} />
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 
@@ -2164,7 +2294,7 @@
                     <select
                       value={rowsPerPage}
                       onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                      className="h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
+                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
                     >
                       {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
                     </select>
@@ -2175,7 +2305,7 @@
                     <select
                       value={safePage}
                       onChange={(e) => setPage(Number(e.target.value))}
-                      className="h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none min-w-[56px]"
+                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none min-w-[56px]"
                     >
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>{n}</option>
@@ -2248,7 +2378,7 @@
             </button>
             <button onClick={() => { setOpen(false); onDelete(rule.id); }}
               className="w-full px-3 h-9 flex items-center gap-3 text-[14px] text-ink-900 hover:bg-ink-50">
-              <Icon name="delete-outline" size={16} className="text-ink-700" />
+              <Icon name="trash" size={16} className="text-ink-700" />
               <span>Delete</span>
             </button>
           </div>,
@@ -2268,7 +2398,8 @@
 
       const AwayModeTab = ({ awayRules, schedulers, onNew, onEdit, onDelete }) => {
         const [search, setSearch] = useState("");
-        const [sortBy, setSortBy] = useState({ field: "name", dir: "asc" });
+        // Default order: unsorted (reflects insertion order — last added at top)
+        const [sortBy, setSortBy] = useState({ field: null, dir: "asc" });
         const [rowsPerPage, setRowsPerPage] = useState(10);
         const [page, setPage] = useState(1);
 
@@ -2292,13 +2423,15 @@
               (r.assignedSchedulerNames || []).some((n) => n.toLowerCase().includes(q))
             ));
           }
-          rows = [...rows].sort((a, b) => {
-            const k = sortBy.field;
-            const av = (a[k] || "").toString();
-            const bv = (b[k] || "").toString();
-            const c = av.localeCompare(bv);
-            return sortBy.dir === "asc" ? c : -c;
-          });
+          if (sortBy.field) {
+            rows = [...rows].sort((a, b) => {
+              const k = sortBy.field;
+              const av = (a[k] || "").toString();
+              const bv = (b[k] || "").toString();
+              const c = av.localeCompare(bv);
+              return sortBy.dir === "asc" ? c : -c;
+            });
+          }
           return rows;
         }, [enriched, search, sortBy]);
 
@@ -2342,7 +2475,7 @@
 
             {/* Count + search + new button */}
             <div className="flex items-center gap-5">
-              <div className="text-[16px] font-semibold leading-6 text-ink-900 whitespace-nowrap" style={{ fontVariant: "small-caps" }}>
+              <div className="text-[16px] font-semibold leading-6 text-ink-900 whitespace-nowrap">
                 {isEmpty ? "0 away mode rules" : `${awayRules.length} away mode rule${awayRules.length === 1 ? "" : "s"}`}
               </div>
               <div className="flex-1 relative">
@@ -2355,7 +2488,7 @@
                 />
               </div>
               <Button variant="primary" size="md" onClick={onNew} iconLeft="plus">
-                New Away Mode
+                New Away Mode Rule
               </Button>
             </div>
 
@@ -2373,7 +2506,7 @@
                 <div className="border border-ink-100 rounded-lg overflow-hidden">
                   <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_90px] h-10 bg-ink-50 border-b border-ink-100 items-center">
                     <div className="pl-4 pr-3">
-                      <SortHeader field="name" label="AWAY RULE NAME" />
+                      <SortHeader field="name" label="AWAY MODE RULE" />
                     </div>
                     <div className="px-3 text-[12px] font-bold uppercase tracking-[0.06em] text-ink-900">DESTINATION</div>
                     <div className="px-3 text-[12px] font-bold uppercase tracking-[0.06em] text-ink-900">ASSIGNED SCHEDULERS</div>
@@ -2386,29 +2519,40 @@
                     pageRows.map((r, i) => (
                       <div key={r.id}
                         className={`grid grid-cols-[repeat(4,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}>
-                        <div className="pl-4 pr-3 text-[14px] text-ink-900 truncate" title={r.name}>{highlightMatch(r.name, search)}</div>
-                        <div className="px-3 text-[14px] text-ink-700 truncate" title={r.destination}>{r.destination}</div>
-                        <div className="px-3 text-[14px] text-ink-700">
+                        <div className="pl-4 pr-3 text-[14px] text-ink-900 min-w-0">
+                          <TruncationTooltip text={r.name} display={highlightMatch(r.name, search)} className="w-full" />
+                        </div>
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
+                          <TruncationTooltip text={r.destination} className="w-full" />
+                        </div>
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
                           {r.assignedSchedulerNames.length === 0
                             ? <span className="text-ink-400">N/A</span>
-                            : (
-                              <span className="truncate block" title={r.assignedSchedulerNames.join(", ")}>
-                                {(r.assignedSchedulerNames.length <= 2
+                            : (() => {
+                                const fullText = r.assignedSchedulerNames.join(", ");
+                                const shown = r.assignedSchedulerNames.length <= 2
                                   ? r.assignedSchedulerNames
-                                  : r.assignedSchedulerNames.slice(0, 2)
-                                ).map((n, idx, arr) => (
-                                  <Fragment key={idx}>
-                                    {highlightMatch(n, search)}
-                                    {idx < arr.length - 1 ? ", " : null}
-                                  </Fragment>
-                                ))}
-                                {r.assignedSchedulerNames.length > 2 ? ", …" : null}
-                              </span>
-                            )
+                                  : r.assignedSchedulerNames.slice(0, 2);
+                                const suffix = r.assignedSchedulerNames.length > 2 ? ", …" : "";
+                                const display = (
+                                  <>
+                                    {shown.map((n, idx, arr) => (
+                                      <Fragment key={idx}>
+                                        {highlightMatch(n, search)}
+                                        {idx < arr.length - 1 ? ", " : null}
+                                      </Fragment>
+                                    ))}
+                                    {suffix}
+                                  </>
+                                );
+                                return <TruncationTooltip text={fullText} display={display} className="w-full" />;
+                              })()
                           }
                         </div>
-                        <div className="px-3 text-[14px] text-ink-700 truncate" title={r.toggleDestination || ""}>
-                          {r.toggleDestination || <span className="text-ink-400">N/A</span>}
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
+                          {r.toggleDestination
+                            ? <TruncationTooltip text={r.toggleDestination} className="w-full" />
+                            : <span className="text-ink-400">N/A</span>}
                         </div>
                         <div className="flex justify-center">
                           <AwayModeRowMenu rule={r} onEdit={onEdit} onDelete={onDelete} />
@@ -2424,7 +2568,7 @@
                     <span>Rows per page</span>
                     <select value={rowsPerPage}
                       onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                      className="h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none">
+                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none">
                       {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
                     </select>
                     <span className="ml-2">{total === 0 ? "0-0 of 0" : `${startIdx + 1}-${endIdx} of ${total}`}</span>
@@ -2432,7 +2576,7 @@
                   <div className="flex items-center gap-2">
                     <span>Jump to page</span>
                     <select value={safePage} onChange={(e) => setPage(Number(e.target.value))}
-                      className="h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none min-w-[56px]">
+                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none min-w-[56px]">
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (<option key={n} value={n}>{n}</option>))}
                     </select>
                     <div className="flex items-center ml-2">
@@ -2495,34 +2639,60 @@
         );
       };
 
-      const AwayModeRuleModal = ({ open, onClose, editing, schedulers, onSave }) => {
+      const AwayModeRuleModal = ({ open, onClose, editing, schedulers, awayRules = [], onSave }) => {
         const [name, setName] = useState("");
         const [destination, setDestination] = useState("");
         const [expiresHours, setExpiresHours] = useState(24);
         const [expiresMinutes, setExpiresMinutes] = useState(0);
         // assignedSchedulers is an array of scheduler IDs (or empty strings for new rows)
         const [assignedSchedulers, setAssignedSchedulers] = useState([""]);
+        // Snapshot of the values at the moment the modal opened — used to
+        // disable "Save" until the user actually changes something.
+        const initialRef = useRef(null);
 
         useEffect(() => {
           if (!open) return;
-          if (editing) {
-            setName(editing.name || "");
-            setDestination(editing.destValue || "");
-            setExpiresHours(editing.expiresHours ?? 24);
-            setExpiresMinutes(editing.expiresMinutes ?? 0);
-            setAssignedSchedulers(editing.schedulerIds && editing.schedulerIds.length ? [...editing.schedulerIds] : [""]);
-          } else {
-            setName("");
-            setDestination("");
-            setExpiresHours(24);
-            setExpiresMinutes(0);
-            setAssignedSchedulers([""]);
-          }
+          const init = editing
+            ? {
+                name: editing.name || "",
+                destination: editing.destValue || "",
+                expiresHours: editing.expiresHours ?? 24,
+                expiresMinutes: editing.expiresMinutes ?? 0,
+                schedulerIds: editing.schedulerIds && editing.schedulerIds.length ? [...editing.schedulerIds] : [""],
+              }
+            : { name: "", destination: "", expiresHours: 24, expiresMinutes: 0, schedulerIds: [""] };
+          initialRef.current = init;
+          setName(init.name);
+          setDestination(init.destination);
+          setExpiresHours(init.expiresHours);
+          setExpiresMinutes(init.expiresMinutes);
+          setAssignedSchedulers(init.schedulerIds);
         }, [open, editing]);
 
         if (!open) return null;
 
-        const schedulerOptions = schedulers.map((s) => ({ value: s.id, label: s.name }));
+        // Compute which schedulers already have an away mode rule assigned (excluding the one being edited)
+        const schedulersWithExistingRule = new Set();
+        awayRules.forEach((r) => {
+          if (editing && r.id === editing.id) return;
+          (r.schedulerIds || []).forEach((sid) => schedulersWithExistingRule.add(sid));
+        });
+
+        // The selected destination label — used to block schedulers whose default route matches.
+        const selectedDestLabel = destinationOptions.find((o) => o.value === destination)?.label ?? "";
+
+        const schedulerOptions = schedulers.map((s) => {
+          const matchesOwnDefault = !!(selectedDestLabel && s.defaultRoute && s.defaultRoute === selectedDestLabel);
+          return {
+            value: s.id,
+            label: s.name,
+            disabled: matchesOwnDefault,
+            disabledTooltip: matchesOwnDefault ? "This is the scheduler's Default route" : undefined,
+            warning: !matchesOwnDefault && schedulersWithExistingRule.has(s.id)
+              ? "This scheduler already has an Away Mode rule assigned. Selecting it here will update the Away Mode rule and its routing destination."
+              : undefined,
+          };
+        });
 
         // Don't allow the same scheduler to be selected twice — filter options per row
         const optionsForRow = (idx) => {
@@ -2538,7 +2708,11 @@
         // expires must be > 10 minutes total and <= 24 hours.
         const totalMinutes = (Number(expiresHours) || 0) * 60 + (Number(expiresMinutes) || 0);
         const timeOk = totalMinutes >= 10 && totalMinutes <= 24 * 60;
-        const canSave = Boolean(name.trim() && destination && timeOk);
+        const validOk = Boolean(name.trim() && destination && timeOk);
+        // Dirty check: compare current state vs. snapshot taken on open.
+        const currentSnap = { name, destination, expiresHours, expiresMinutes, schedulerIds: assignedSchedulers };
+        const dirty = initialRef.current ? JSON.stringify(currentSnap) !== JSON.stringify(initialRef.current) : false;
+        const canSave = validOk && dirty;
 
         const handleSave = () => {
           if (!canSave) return;
@@ -2562,6 +2736,7 @@
             onClose={onClose}
             title="Away Mode Rule"
             width={524}
+            outerHeight={650}
             footer={
               <>
                 <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -2585,8 +2760,8 @@
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-[14px] font-semibold leading-5 tracking-[0.018em] text-ink-700">Expires in</span>
-                  <PortalTooltip text={`Call routing returns to the scheduler's rules after the hh:mm lapse or when Away Mode is turned off manually`}>
-                    <Icon name="info-circle" size={16} className="text-ink-500 cursor-help" />
+                  <PortalTooltip text={`Call routing returns to the scheduler's rules after the hh:mm lapse or when Away Mode is turned off manually`} className="group">
+                    <Icon name="info-circle" size={16} className="text-ink-500 cursor-help group-hover:text-[#244C91] transition-colors" />
                   </PortalTooltip>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2629,7 +2804,7 @@
                         className="w-[26px] h-[26px] inline-flex items-center justify-center rounded text-ink-700 hover:bg-ink-50 hover:text-primary-500"
                         aria-label="Remove scheduler"
                       >
-                        <Icon name="delete-outline" size={18} />
+                        <Icon name="trash" size={18} />
                       </button>
                     </div>
                   ))}
@@ -2639,7 +2814,7 @@
                     type="button"
                     onClick={addScheduler}
                     disabled={assignedSchedulers.length >= schedulers.length}
-                    className="inline-flex items-center gap-1 h-6 pl-1 pr-2 rounded bg-white border border-[#A3B6D7] text-[#244C91] text-[12px] font-bold uppercase tracking-btnSm hover:bg-[#D1DAEB] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1 h-6 pl-1 pr-2 rounded bg-white border border-[#A3B6D7] text-[#244C91] text-[12px] font-bold uppercase tracking-btnSm hover:bg-[#D1DAEB] transition-colors disabled:bg-[#E5E6E8] disabled:border-[#E5E6E8] disabled:text-[#4C5863] disabled:cursor-not-allowed"
                   >
                     <Icon name="plus" size={14} />
                     Scheduler
@@ -2651,7 +2826,7 @@
         );
       };
 
-      const SchedulerCard = ({ scheduler, searchQuery, expanded, onToggle, expandedSection, onExpandSection, onEdit, onDuplicate, onDelete, isHighlighted, locationHolidays = locationHolidayCatalog }) => {
+      const SchedulerCard = ({ scheduler, searchQuery, expanded, onToggle, expandedSection, onExpandSection, onEdit, onDuplicate, onDelete, isHighlighted, locationHolidays = locationHolidayCatalog, awayRules = [] }) => {
         const tsKey = `${scheduler.id}-ts`;
         const hKey = `${scheduler.id}-h`;
         const tsExpanded = expandedSection[tsKey] !== false; // default open
@@ -2663,15 +2838,25 @@
             .filter(Boolean)
             .map((h) => ({ ...h, dest: h.destination || h.dest || "Holiday Greeting [2243]", source: "location" })),
         ];
+        // An ongoing holiday is any attached location holiday flagged as ongoing.
+        const hasOngoingHoliday = (scheduler.locationHolidays ?? []).some((id) => {
+          const lh = locationHolidays.find((l) => l.id === id);
+          return !!(lh && lh.ongoing);
+        });
+        // Derive away mode route from awayRules — find the rule assigned to this scheduler.
+        const matchingAwayRule = awayRules.find((r) => (r.schedulerIds || []).includes(scheduler.id));
+        const awayRouteDisplay = matchingAwayRule ? matchingAwayRule.destination : "";
 
         return (
-          <div className={`bg-white border rounded-lg shadow-scheduler transition-colors duration-300 ${isHighlighted ? "border-[#B2B7BC]" : "border-ink-100"}`}>
+          <div
+            className={`border rounded-lg shadow-scheduler bg-white transition-colors duration-300 ${isHighlighted ? "border-[#B2B7BC]" : "border-ink-100"}`}
+          >
             <div className="px-6 py-4">
               <div className="flex items-start justify-between">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 mb-6">
                     <h3 className="font-display text-[16px] font-semibold text-ink-900 leading-none">{highlightMatch(scheduler.name, searchQuery)}</h3>
-                    {scheduler.hasHolidays && (
+                    {hasOngoingHoliday && (
                       <span className="relative group inline-flex">
                         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold bg-secondary-500 text-white cursor-default leading-none">H</span>
                         <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+6px)] whitespace-nowrap bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -2691,7 +2876,7 @@
                   <div className="flex flex-col gap-2">
                     <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Assigned to:</span> <span className="font-semibold">{scheduler.assignedTo && scheduler.assignedTo.trim() ? scheduler.assignedTo : "N/A"}</span></p>
                     <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Default route:</span> <span className="font-semibold">{scheduler.defaultRoute && scheduler.defaultRoute.trim() ? scheduler.defaultRoute : "N/A"}</span></p>
-                    <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Away Mode route:</span> <span className="font-semibold">{scheduler.awayRoute && scheduler.awayRoute.trim() ? scheduler.awayRoute : "N/A"}</span></p>
+                    <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Away Mode route:</span> <span className="font-semibold">{awayRouteDisplay && awayRouteDisplay.trim() ? awayRouteDisplay : "N/A"}</span></p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -2747,8 +2932,9 @@
                 ) : (
                   <div className="flex flex-col gap-2">
                     {holidays.map((h, idx) => {
-                      const isLastOnMgmt = scheduler.id === "mo" && idx === holidays.length - 1;
-                      const rowBg = isLastOnMgmt ? "bg-[#F8EAF4]" : "bg-ink-50";
+                      // Highlight the row for any attached ongoing (location) holiday.
+                      const isOngoing = h.source === "location" && !!h.ongoing;
+                      const rowBg = isOngoing ? "bg-[#F8EAF4]" : "bg-ink-50";
                       const hasMultiDates = Array.isArray(h.dates) && h.dates.length > 1;
                       const hasMultiSlots = Array.isArray(h.slots) && h.slots.length > 1;
                       const wherePieces = (h.when || "").split(" • ");
@@ -2803,18 +2989,27 @@
        *  SCHEDULER EDITOR MODAL (large modal overlay)
        * ===================================================== */
 
-      const SchedulerEditorModal = ({ open, onClose, scheduler, onSave, locationHolidaysCatalog = locationHolidayCatalog }) => {
+      const SchedulerEditorModal = ({ open, onClose, scheduler, onSave, locationHolidaysCatalog = locationHolidayCatalog, dids = [], schedulersCount = 0, isOnlyDefault = false, awayRules = [] }) => {
         const isExisting = !!(scheduler && scheduler.id);
         const isNewBlank = !scheduler; // opened from "New Scheduler" with no draft
+
+        // Look up this scheduler's existing Away Mode route (used to block the
+        // same destination from being chosen as the default route below).
+        const awayRuleForScheduler = scheduler && scheduler.id
+          ? awayRules.find((r) => (r.schedulerIds || []).includes(scheduler.id))
+          : null;
+        const awayRouteForScheduler = awayRuleForScheduler ? awayRuleForScheduler.destination : "";
 
         // Parse a comma-separated DID string into an array.
         const parseDIDs = (s) => (!s ? [] : String(s).split(",").map((x) => x.trim()).filter(Boolean));
 
         const [tab, setTab] = useState("info");
-        const [name, setName] = useState(isNewBlank ? "New Scheduler" : (scheduler?.name ?? ""));
+        const [name, setName] = useState(isNewBlank ? "" : (scheduler?.name ?? ""));
         const [defaultRoute, setDefaultRoute] = useState(scheduler?.defaultRoute ?? "");
         const [awayRoute, setAwayRoute] = useState(scheduler?.awayRoute ?? "");
-        const [isDefault, setIsDefault] = useState(scheduler?.isDefault ?? false);
+        // Empty-list rule: the first scheduler MUST be the default.
+        const defaultLocked = (isNewBlank && schedulersCount === 0) || isOnlyDefault;
+        const [isDefault, setIsDefault] = useState(defaultLocked ? true : (scheduler?.isDefault ?? false));
         const [assignedDIDs, setAssignedDIDs] = useState(parseDIDs(scheduler?.assignedTo));
         const [didSearch, setDidSearch] = useState("");
         const [didSelection, setDidSelection] = useState({ assigned: [], available: [] });
@@ -2832,10 +3027,12 @@
         useEffect(() => {
           if (open) {
             const blank = !scheduler;
-            const initialName = blank ? "New Scheduler" : (scheduler?.name ?? "");
+            const initialName = blank ? "" : (scheduler?.name ?? "");
             const initialDefaultRoute = scheduler?.defaultRoute ?? "";
             const initialAwayRoute = scheduler?.awayRoute ?? "";
-            const initialIsDefault = scheduler?.isDefault ?? false;
+            // Force default=true when this is the first scheduler being created, or when
+            // editing the only remaining default scheduler.
+            const initialIsDefault = defaultLocked ? true : (scheduler?.isDefault ?? false);
             const initialAssignedDIDs = parseDIDs(scheduler?.assignedTo);
             // Group any pre-existing matching slots so list + calendar render in lockstep.
             const initialTimeSlots = mergeMatchingTimeSlots(scheduler?.timeSlots ?? []);
@@ -2919,9 +3116,16 @@
           locationHolidays,
         });
 
-        // Transfer-list helpers
+        // Transfer-list helpers — pull from the live DID list so the modal matches the DIDs page.
+        // A DID is "assigned elsewhere" when it belongs to any scheduler other than the one being edited.
+        const currentSchedulerId = scheduler?.id ?? null;
         const assignedSet = new Set(assignedDIDs);
-        const availableDIDs = SYSTEM_DIDS.filter((d) => !assignedSet.has(d.number));
+        const availableDIDs = dids
+          .filter((d) => !assignedSet.has(d.number))
+          .map((d) => ({
+            number: d.number,
+            assignedElsewhere: !!d.schedulerId && d.schedulerId !== currentSchedulerId,
+          }));
         const filterBySearch = (list) => {
           const q = didSearch.trim().toLowerCase();
           if (!q) return list;
@@ -3004,6 +3208,7 @@
                       name={name} setName={setName}
                       defaultRoute={defaultRoute} setDefaultRoute={setDefaultRoute}
                       isDefault={isDefault} setIsDefault={setIsDefault}
+                      defaultLocked={defaultLocked}
                       assignedDIDs={assignedDIDs}
                       availableDIDs={availableDIDs}
                       didSearch={didSearch} setDidSearch={setDidSearch}
@@ -3012,10 +3217,11 @@
                       moveToAssigned={moveToAssigned}
                       moveToAvailable={moveToAvailable}
                       filterBySearch={filterBySearch}
+                      awayRouteForScheduler={awayRouteForScheduler}
                     />
                   )}
                   {tab === "timeslots" && (
-                    <TimeSlotsTab timeSlots={timeSlots} setTimeSlots={setTimeSlots} />
+                    <TimeSlotsTab timeSlots={timeSlots} setTimeSlots={setTimeSlots} defaultRoute={defaultRoute} />
                   )}
                   {tab === "holidays" && (
                     <HolidaysTab
@@ -3037,7 +3243,7 @@
                   <Button
                     variant="primary"
                     onClick={onExitSave}
-                    disabled={!name.trim() || (isExisting && !isAnyDirty)}
+                    disabled={!name.trim() || !defaultRoute || !isAnyDirty}
                   >Save</Button>
                 </div>
               </div>
@@ -3066,39 +3272,51 @@
       const SchedulerInfoTab = ({
         name, setName,
         defaultRoute, setDefaultRoute,
-        isDefault, setIsDefault,
+        isDefault, setIsDefault, defaultLocked = false,
         assignedDIDs, availableDIDs,
         didSearch, setDidSearch,
         didSelection, togglePick,
         moveToAssigned, moveToAvailable,
         filterBySearch,
+        awayRouteForScheduler = "",
       }) => {
         const filteredAssigned = filterBySearch(assignedDIDs.map((n) => ({ number: n })));
         const filteredAvailable = filterBySearch(availableDIDs);
+        const defaultRouteOptions = destinationOptions.map((o) => {
+          const isAwayMatch = !!(awayRouteForScheduler && awayRouteForScheduler === o.label);
+          return {
+            value: o.label,
+            label: o.label,
+            disabled: isAwayMatch,
+            disabledTooltip: isAwayMatch ? "This is the scheduler's Away Mode route" : undefined,
+          };
+        });
         return (
           <div className="flex flex-col gap-6">
             {/* Top fields */}
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Scheduler name" required value={name} onChange={setName} placeholder="e.g. Business Hours" />
+                <Input label="Scheduler name" required value={name} onChange={setName} placeholder="Scheduler Name" />
                 <Select
                   label="Default route"
+                  required
                   value={defaultRoute}
                   onChange={setDefaultRoute}
-                  options={destinationOptions.map((o) => ({ value: o.label, label: o.label }))}
+                  options={defaultRouteOptions}
                   placeholder="Select destination"
                 />
               </div>
               {/* Make default scheduler */}
-              <label className="flex items-start gap-3 cursor-pointer select-none">
+              <label className={`flex items-start gap-3 select-none ${defaultLocked ? "cursor-not-allowed" : "cursor-pointer"}`}>
                 <span className="relative w-5 h-5 mt-0.5 shrink-0">
                   <input
                     type="checkbox"
                     checked={isDefault}
+                    disabled={defaultLocked}
                     onChange={(e) => setIsDefault(e.target.checked)}
-                    className="peer absolute inset-0 w-5 h-5 opacity-0 cursor-pointer"
+                    className="peer absolute inset-0 w-5 h-5 opacity-0 cursor-pointer disabled:cursor-not-allowed"
                   />
-                  <span className="pointer-events-none absolute inset-0 rounded-[4px] border-2 border-ink-500 peer-checked:border-primary-500 peer-checked:bg-primary-500 transition-colors" />
+                  <span className={`pointer-events-none absolute inset-0 rounded-[4px] border-2 border-ink-500 peer-checked:border-primary-500 peer-checked:bg-primary-500 transition-colors ${defaultLocked ? "opacity-60" : ""}`} />
                   <svg
                     viewBox="0 0 24 24"
                     className="pointer-events-none absolute inset-0 w-full h-full opacity-0 peer-checked:opacity-100"
@@ -3112,8 +3330,12 @@
                   </svg>
                 </span>
                 <div className="flex flex-col gap-1">
-                  <span className="text-[14px] leading-5 text-ink-900 font-semibold">Make default scheduler</span>
-                  <span className="text-[12px] leading-4 text-ink-500">Set this as the default scheduler for any DIDs that don't have one assigned. This will replace your current default.</span>
+                  <span className={`text-[14px] leading-5 font-semibold ${defaultLocked ? "text-ink-500" : "text-ink-900"}`}>Make default scheduler</span>
+                  <span className="text-[12px] leading-4 text-ink-500">
+                    {defaultLocked
+                      ? "At least one scheduler must be the default — this can be reassigned once another scheduler is created."
+                      : "Set this as the default scheduler for any DIDs that don't have one assigned. This will replace your current default."}
+                  </span>
                 </div>
               </label>
             </div>
@@ -3216,7 +3438,7 @@
                               <span>{highlightMatch(d.number, didSearch)}</span>
                               {d.assignedElsewhere && (
                                 <PortalTooltip text="Already assigned to another scheduler" className="group">
-                                  <Icon name="warning-circle" size={14} className="text-[#7F888F] group-hover:text-[#4C5863] transition-colors" />
+                                  <Icon name="warning-circle" size={14} className="text-[#7F888F] group-hover:text-[#244C91] transition-colors" />
                                 </PortalTooltip>
                               )}
                             </div>
@@ -3363,7 +3585,7 @@
                 className={`relative w-full h-8 pl-3 pr-8 text-left text-[14px] leading-5 text-ink-900 bg-white border ${dirty ? "border-ink-500" : "border-ink-200"} rounded hover:border-ink-400 focus:border-primary-500 focus:outline-none`}
               >
                 <span className={arr.length === 0 ? "text-ink-400" : ""}>{displayText}</span>
-                <Icon name="chevron-down" size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-600" />
+                <Icon name={open ? "chevron-up" : "chevron-down"} size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-600" />
               </button>
               {open && ReactDOM.createPortal(
                 <div
@@ -3740,7 +3962,11 @@
         return (
           <div className="bg-ink-50 rounded-lg overflow-hidden border border-[#CCCFD2]">
             <div className="px-4 py-3 text-center text-[14px] bg-[#E5E6E8] text-black">
-              Calls outside defined hours will route to <span className="font-semibold">{overflowDest}</span>
+              {overflowDest ? (
+                <>Calls outside defined hours will route to <span className="font-semibold">{overflowDest}</span></>
+              ) : (
+                <span className="italic">Select a default destination</span>
+              )}
             </div>
             <div
               ref={scrollRef}
@@ -3954,13 +4180,39 @@
         );
       };
 
-      const TimeSlotsTab = ({ timeSlots, setTimeSlots }) => {
+      const TimeSlotsTab = ({ timeSlots, setTimeSlots, defaultRoute }) => {
         const [view, setView] = useState("calendar");
         const [editingIds, setEditingIds] = useState(() => new Set());
         const [originals, setOriginals] = useState({});
         const [newIds, setNewIds] = useState(() => new Set());
         const [slotModal, setSlotModal] = useState({ open: false, mode: "create", slotId: null, day: "", start: "", end: "", initialDest: "" });
-        const overflowDest = "Support Line [6620]";
+        const overflowDest = defaultRoute || "";
+
+        // Keep refs of the latest editing state so the unmount cleanup can
+        // roll back unsaved changes (new slots + in-flight edits) when the
+        // user navigates away from the Time Slots tab without saving.
+        const editingIdsRef = useRef(editingIds);
+        const originalsRef = useRef(originals);
+        const newIdsRef = useRef(newIds);
+        useEffect(() => { editingIdsRef.current = editingIds; }, [editingIds]);
+        useEffect(() => { originalsRef.current = originals; }, [originals]);
+        useEffect(() => { newIdsRef.current = newIds; }, [newIds]);
+        useEffect(() => {
+          return () => {
+            const newSet = newIdsRef.current;
+            const editSet = editingIdsRef.current;
+            const origMap = originalsRef.current;
+            // If there's nothing to discard, skip.
+            if ((!newSet || newSet.size === 0) && (!editSet || editSet.size === 0)) return;
+            setTimeSlots((arr) => {
+              // Drop any newly-added-but-unsaved slots.
+              let next = (arr || []).filter((s) => !newSet.has(s.id));
+              // Revert any in-flight edits back to their originals.
+              next = next.map((s) => (editSet.has(s.id) && origMap[s.id] ? origMap[s.id] : s));
+              return next;
+            });
+          };
+        }, []);
 
         const handleDragCreate = ({ day, start, end }) => {
           setSlotModal({ open: true, mode: "create", slotId: null, day, start, end, initialDest: "" });
@@ -4186,7 +4438,7 @@
                 </div>
                 <span className="text-[14px] text-ink-700">
                   {view === "calendar"
-                    ? "Drag to add and adjust time slots"
+                    ? "Drag or click to add and adjust time slots"
                     : `${timeSlots.length} time slot${timeSlots.length === 1 ? "" : "s"}`}
                 </span>
               </div>
@@ -4216,7 +4468,11 @@
             /* Grey panel (list view) */
             <div className="bg-ink-50 rounded-lg overflow-hidden border border-[#CCCFD2]">
               <div className="px-4 py-3 text-center text-[14px] bg-[#E5E6E8] text-black">
-                Calls outside defined hours will route to <span className="font-semibold">{overflowDest}</span>
+                {overflowDest ? (
+                  <>Calls outside defined hours will route to <span className="font-semibold">{overflowDest}</span></>
+                ) : (
+                  <span className="italic">Select a default destination</span>
+                )}
               </div>
               <div className="p-4">
                 {timeSlots.length === 0 ? (
@@ -4399,7 +4655,7 @@
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {onEdit && <IconButton name="edit" title="Edit" onClick={onEdit} size={16} />}
-              <IconButton name="trash" title={onEdit ? "Delete" : "Remove"} onClick={onDelete} size={20} />
+              <IconButton name="trash" title={onEdit ? "Delete" : "Remove"} onClick={onDelete} />
             </div>
           </div>
         );
@@ -4413,7 +4669,7 @@
         const locItems = locationHolidays
           .map((id) => locationHolidaysCatalog.find((l) => l.id === id))
           .filter(Boolean);
-        const outlineBtn = "inline-flex items-center gap-1 h-6 pl-1 pr-2 rounded bg-white border border-[#A3B6D7] text-[#244C91] text-[12px] font-bold uppercase tracking-btnSm hover:bg-[#D1DAEB] transition-colors";
+        const outlineBtn = "inline-flex items-center gap-1 h-6 pl-1 pr-2 rounded bg-white border border-[#A3B6D7] text-[#244C91] text-[12px] font-bold uppercase tracking-btnSm hover:bg-[#D1DAEB] transition-colors disabled:bg-[#E5E6E8] disabled:border-[#E5E6E8] disabled:text-[#4C5863] disabled:cursor-not-allowed";
         return (
           <div className="flex flex-col gap-3">
             {/* Info alert */}
@@ -4427,8 +4683,8 @@
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 pb-2">
                   <h4 className="text-[14px] font-semibold text-ink-900 tracking-[0.25px]">Custom holidays</h4>
-                  <PortalTooltip text="These holidays apply only to this scheduler">
-                    <Icon name="info" size={14} className="text-ink-500 cursor-help" />
+                  <PortalTooltip text="These holidays apply only to this scheduler" className="group">
+                    <Icon name="info" size={14} className="text-ink-500 cursor-help group-hover:text-[#244C91] transition-colors" />
                   </PortalTooltip>
                 </div>
                 {customHolidays.length === 0 && (
@@ -4460,8 +4716,8 @@
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 pb-2">
                   <h4 className="text-[14px] font-semibold text-ink-900 tracking-[0.25px]">Location holidays</h4>
-                  <PortalTooltip text="List of predefined holidays for this location">
-                    <Icon name="info" size={14} className="text-ink-500 cursor-help" />
+                  <PortalTooltip text="List of predefined holidays for this location" className="group">
+                    <Icon name="info" size={14} className="text-ink-500 cursor-help group-hover:text-[#244C91] transition-colors" />
                   </PortalTooltip>
                 </div>
                 {locItems.length === 0 && (
@@ -4679,29 +4935,46 @@
         const [timeConfig, setTimeConfig] = useState("allday");
         const [slots, setSlots] = useState([{ id: "s1", start: "09:00 AM", end: "05:00 PM" }]);
         const [destination, setDestination] = useState("");
+        // Snapshot of opening values, used to disable Save until something changes.
+        const initialRef = useRef(null);
 
         useEffect(() => {
           if (!open) return;
-          if (editing) {
-            setName(editing.name ?? "");
-            setEventType(editing.recurrence ?? "yearly");
-            setDateConfig(editing.dateConfig ?? "fixed");
-            setMonth(editing.month ?? "");
-            setDay(Number(editing.day) || 1);
-            setObserveWeekday(editing.observeWeekday ?? true);
-            setOccurrence(editing.occurrence ?? "");
-            setMovableDay(editing.movableDay ?? "");
-            setDates(editing.dates ?? []);
-            setTimeConfig(editing.timeConfig ?? "allday");
-            setSlots(editing.slots && editing.slots.length ? editing.slots : [{ id: "s1", start: "09:00 AM", end: "05:00 PM" }]);
-            setDestination(editing.destValue ?? "");
-          } else {
-            setName(""); setEventType("yearly"); setDateConfig("fixed");
-            setMonth(""); setDay(1); setObserveWeekday(true);
-            setOccurrence(""); setMovableDay(""); setDates([]);
-            setTimeConfig("allday"); setSlots([{ id: "s1", start: "09:00 AM", end: "05:00 PM" }]);
-            setDestination("");
-          }
+          const init = editing
+            ? {
+                name: editing.name ?? "",
+                eventType: editing.recurrence ?? "yearly",
+                dateConfig: editing.dateConfig ?? "fixed",
+                month: editing.month ?? "",
+                day: Number(editing.day) || 1,
+                observeWeekday: editing.observeWeekday ?? true,
+                occurrence: editing.occurrence ?? "",
+                movableDay: editing.movableDay ?? "",
+                dates: editing.dates ?? [],
+                timeConfig: editing.timeConfig ?? "allday",
+                slots: editing.slots && editing.slots.length ? editing.slots : [{ id: "s1", start: "09:00 AM", end: "05:00 PM" }],
+                destination: editing.destValue ?? "",
+              }
+            : {
+                name: "", eventType: "yearly", dateConfig: "fixed",
+                month: "", day: 1, observeWeekday: true,
+                occurrence: "", movableDay: "", dates: [],
+                timeConfig: "allday", slots: [{ id: "s1", start: "09:00 AM", end: "05:00 PM" }],
+                destination: "",
+              };
+          initialRef.current = init;
+          setName(init.name);
+          setEventType(init.eventType);
+          setDateConfig(init.dateConfig);
+          setMonth(init.month);
+          setDay(init.day);
+          setObserveWeekday(init.observeWeekday);
+          setOccurrence(init.occurrence);
+          setMovableDay(init.movableDay);
+          setDates(init.dates);
+          setTimeConfig(init.timeConfig);
+          setSlots(init.slots);
+          setDestination(init.destination);
           setCalOpen(false);
         }, [open, editing]);
 
@@ -4719,7 +4992,10 @@
         if (isFixed && !isOneTime) datesOk = Boolean(month && day);
         if (isMovable) datesOk = Boolean(occurrence && movableDay && month);
         const slotsOk = !isRange || (slots.length > 0 && slots.every((s) => s.start && s.end));
-        const canSave = Boolean(name.trim() && destination && datesOk && slotsOk);
+        const validOk = Boolean(name.trim() && destination && datesOk && slotsOk);
+        const currentSnap = { name, eventType, dateConfig, month, day, observeWeekday, occurrence, movableDay, dates, timeConfig, slots, destination };
+        const dirty = initialRef.current ? JSON.stringify(currentSnap) !== JSON.stringify(initialRef.current) : false;
+        const canSave = validOk && dirty;
 
         const addSlot = () => {
           const id = `s-${Date.now()}`;
@@ -4889,7 +5165,7 @@
                       <div key={s.id} className="flex flex-col gap-2 rounded border border-ink-100 bg-ink-50/60 px-3 py-2">
                         <div className="flex items-center justify-between">
                           <span className="text-[14px] font-semibold text-ink-900">Slot {idx + 1}</span>
-                          <IconButton name="trash" title="Remove" onClick={() => removeSlot(s.id)} size={16} />
+                          <IconButton name="trash" title="Remove" onClick={() => removeSlot(s.id)} />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <Input label="Start time" value={s.start} onChange={(v) => updateSlot(s.id, { start: v })} placeholder="09:00 AM" />
@@ -4928,8 +5204,18 @@
        * ===================================================== */
       const LocationHolidayModal = ({ open, onClose, selectedIds, onSave, catalog = locationHolidayCatalog }) => {
         const [selected, setSelected] = useState(selectedIds);
-        useEffect(() => { if (open) setSelected(selectedIds); }, [open, selectedIds]);
+        const initialRef = useRef(null);
+        useEffect(() => {
+          if (open) {
+            const init = [...(selectedIds || [])];
+            initialRef.current = init;
+            setSelected(init);
+          }
+        }, [open, selectedIds]);
         const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+        const initSorted = initialRef.current ? [...initialRef.current].sort() : null;
+        const curSorted = [...selected].sort();
+        const dirty = initSorted ? JSON.stringify(initSorted) !== JSON.stringify(curSorted) : false;
         return (
           <Modal
             open={open}
@@ -4939,7 +5225,7 @@
             footer={
               <>
                 <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button variant="primary" onClick={() => onSave(selected)}>Save</Button>
+                <Button variant="primary" onClick={() => onSave(selected)} disabled={!dirty}>Save</Button>
               </>
             }
           >
