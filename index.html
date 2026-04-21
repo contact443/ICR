@@ -10,9 +10,9 @@
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Poppins:wght@500;600&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script>
-      // Tailwind config — extends theme with Sangoma/BVP tokens pulled from Figma
+      // Tailwind config
       tailwind.config = {
         theme: {
           extend: {
@@ -105,7 +105,9 @@
       }
       /* Pagination page-size / jump-to-page selects: hide native arrow, draw a
          chevron-down 8px in from the right edge (so there's 8px of padding
-         after the arrow). Width auto so the select shrinks to its content. */
+         after the arrow). Width is driven by the hidden sizer sibling in
+         .bvp-select-sizer so it tracks the current value, not the widest
+         option. */
       .bvp-page-select {
         -webkit-appearance: none;
         -moz-appearance: none;
@@ -116,6 +118,33 @@
         padding-right: 32px;
         width: auto;
         min-width: 0;
+      }
+      /* Inline wrapper that sizes to the currently selected value by using
+         a hidden, text-only "ghost" sibling with the same font metrics and
+         horizontal padding as the select. The <select> is absolutely
+         positioned on top and stretches to fill the wrapper. */
+      .bvp-page-select-wrap {
+        position: relative;
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .bvp-page-select-wrap > .bvp-select-sizer {
+        display: block;
+        visibility: hidden;
+        pointer-events: none;
+        white-space: nowrap;
+        font-size: 14px;
+        line-height: 32px;   /* matches h-8 */
+        height: 32px;
+        padding-left: 8px;   /* matches px-2 */
+        padding-right: 32px; /* matches chevron reserve */
+        border: 1px solid transparent; /* matches select border width */
+        box-sizing: border-box;
+      }
+      .bvp-page-select-wrap > select.bvp-page-select {
+        position: absolute;
+        inset: 0;
+        width: 100%;
       }
     </style>
   </head>
@@ -419,7 +448,7 @@
             </span>
             {visible && ReactDOM.createPortal(
               <div
-                className="fixed z-[9999] pointer-events-none whitespace-nowrap bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded"
+                className="fixed z-[9999] pointer-events-none max-w-[280px] whitespace-normal break-words bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded"
                 style={{ top: pos.top - 8, left: pos.left, transform: "translate(-50%, -100%)" }}
               >
                 {text}
@@ -436,12 +465,16 @@
       // with the standard truncate classes applied to a child span. Optionally a
       // `display` JSX can be passed to render something different (e.g. a
       // highlighted version of the text) while keeping the plain tooltip string.
-      const TruncationTooltip = ({ text, display, className = "", innerClassName = "" }) => {
+      // `force` always shows the tooltip on hover — useful when the displayed
+      // content is logically truncated (e.g. "A, B, …") but still fits in the
+      // cell so CSS-based detection would miss it.
+      const TruncationTooltip = ({ text, display, className = "", innerClassName = "", force = false }) => {
         const [visible, setVisible] = useState(false);
         const [pos, setPos] = useState({ top: 0, left: 0 });
         const wrapRef = useRef(null);
         const textRef = useRef(null);
         const isTruncated = () => {
+          if (force) return true;
           const el = textRef.current;
           if (!el) return false;
           return el.scrollWidth > el.clientWidth + 1;
@@ -472,7 +505,7 @@
             </span>
             {visible && ReactDOM.createPortal(
               <div
-                className="fixed z-[9999] pointer-events-none whitespace-nowrap bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded"
+                className="fixed z-[9999] pointer-events-none max-w-[280px] whitespace-normal break-words bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded"
                 style={{ top: pos.top - 8, left: pos.left, transform: "translate(-50%, -100%)" }}
               >
                 {text}
@@ -562,28 +595,28 @@
               >
                 {options.map((o) => {
                   const isDisabled = !!o.disabled;
-                  const baseRow = (
+                  const label = <span>{o.label}</span>;
+                  const labelNode = isDisabled && o.disabledTooltip
+                    ? <PortalTooltip text={o.disabledTooltip}>{label}</PortalTooltip>
+                    : label;
+                  return (
                     <div
                       key={o.value}
                       onClick={() => { if (isDisabled) return; onChange?.(o.value); setOpen(false); }}
-                      className={`px-3 py-1.5 text-[14px] leading-5 ${isDisabled ? "cursor-not-allowed text-ink-400" : "cursor-pointer bvp-row-hover"} flex items-center gap-2 ${value === o.value ? "text-primary-500 font-semibold bg-primary-25" : (isDisabled ? "" : "text-ink-900")}`}
+                      className={`px-3 py-1.5 text-[14px] leading-5 flex items-center gap-2 ${
+                        isDisabled
+                          ? "cursor-not-allowed text-ink-400"
+                          : `cursor-pointer bvp-row-hover ${value === o.value ? "text-primary-500 font-semibold bg-primary-25" : "text-ink-900"}`
+                      }`}
                     >
-                      <span>{o.label}</span>
+                      {labelNode}
                       {o.warning && !isDisabled && (
-                        <PortalTooltip text={o.warning} className="group ml-auto">
+                        <PortalTooltip text={o.warning} className="group">
                           <Icon name="warning-circle" size={14} className="text-[#7F888F] group-hover:text-[#244C91] transition-colors" />
                         </PortalTooltip>
                       )}
                     </div>
                   );
-                  if (isDisabled && o.disabledTooltip) {
-                    return (
-                      <PortalTooltip key={o.value} text={o.disabledTooltip} className="w-full">
-                        {baseRow}
-                      </PortalTooltip>
-                    );
-                  }
-                  return baseRow;
                 })}
               </div>,
               document.body
@@ -867,8 +900,8 @@
         {
           id: "am-reception",
           name: "Reception Desk",
-          destination: "Attendant [8022]",
-          destValue: "attendant-8022",
+          destination: "Main Reception [6678]",
+          destValue: "main-6678",
           toggleDestination: "Toggle1 [1234]",
           expiresHours: 24,
           expiresMinutes: 0,
@@ -882,7 +915,7 @@
           toggleDestination: "Toggle2 [5678]",
           expiresHours: 2,
           expiresMinutes: 30,
-          schedulerIds: ["ss", "mo", "bh"],
+          schedulerIds: ["mo", "bh"],
         },
         {
           id: "am-dept",
@@ -1939,13 +1972,16 @@
                 <div className="mt-4 flex items-center justify-between text-[14px] text-ink-700">
                   <div className="flex items-center gap-2">
                     <span>Rows per page</span>
-                    <select
-                      value={rowsPerPage}
-                      onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
-                    >
-                      {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
-                    </select>
+                    <span className="bvp-page-select-wrap">
+                      <span className="bvp-select-sizer">{rowsPerPage}</span>
+                      <select
+                        value={rowsPerPage}
+                        onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                        className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
+                      >
+                        {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
+                      </select>
+                    </span>
                     <span className="ml-2">{total === 0 ? "0-0 of 0" : `${startIdx + 1}-${endIdx} of ${total}`}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2246,39 +2282,49 @@
                       return (
                       <div
                         key={h.id}
-                        className={`grid grid-cols-[repeat(6,minmax(0,1fr))_90px] min-h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}
+                        className={`grid grid-cols-[repeat(6,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}
                       >
-                        <div className="pl-7 pr-3 py-2 text-[14px] text-ink-900 min-w-0">
+                        <div className="pl-7 pr-3 text-[14px] text-ink-900 min-w-0">
                           <TruncationTooltip text={h.name} display={highlightMatch(h.name, search)} className="w-full" />
                         </div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
                           <TruncationTooltip text={h.datesOrDays} className="w-full" />
                         </div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
                           <TruncationTooltip text={h.recurrence} className="w-full" />
                         </div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
                           <TruncationTooltip text={h.duration} className="w-full" />
                         </div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
                           <TruncationTooltip text={h.destination} className="w-full" />
                         </div>
-                        <div className="px-3 py-2 text-[14px] text-ink-700 min-w-0">
+                        <div className="px-3 text-[14px] text-ink-700 min-w-0">
                           {h.assignedSchedulers.length === 0
                             ? <span className="text-ink-400">N/A</span>
-                            : (
-                              <div className="flex flex-col gap-0.5 min-w-0">
-                                {h.assignedSchedulers.slice(0, 2).map((n, idx) => (
-                                  <TruncationTooltip key={idx} text={n} display={highlightMatch(n, search)} className="w-full" />
-                                ))}
-                                {h.assignedSchedulers.length > 2 && (
-                                  <span className="text-ink-500 text-[12px]">+{h.assignedSchedulers.length - 2} more</span>
-                                )}
-                              </div>
-                            )
+                            : (() => {
+                                const fullText = h.assignedSchedulers.join(", ");
+                                const hasMore = h.assignedSchedulers.length > 2;
+                                const shown = hasMore
+                                  ? h.assignedSchedulers.slice(0, 2)
+                                  : h.assignedSchedulers;
+                                const suffix = hasMore ? ", …" : "";
+                                const display = (
+                                  <>
+                                    {shown.map((n, idx, arr) => (
+                                      <Fragment key={idx}>
+                                        {highlightMatch(n, search)}
+                                        {idx < arr.length - 1 ? ", " : null}
+                                      </Fragment>
+                                    ))}
+                                    {suffix}
+                                  </>
+                                );
+                                return <TruncationTooltip text={fullText} display={display} className="w-full" force={hasMore} />;
+                              })()
                           }
                         </div>
-                        <div className="py-2 flex justify-center">
+                        <div className="flex justify-center">
                           <LocationHolidayRowMenu holiday={h} onEdit={onEdit} onDelete={onDelete} />
                         </div>
                       </div>
@@ -2291,13 +2337,16 @@
                 <div className="mt-4 flex items-center justify-between text-[14px] text-ink-700">
                   <div className="flex items-center gap-2">
                     <span>Rows per page</span>
-                    <select
-                      value={rowsPerPage}
-                      onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
-                    >
-                      {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
-                    </select>
+                    <span className="bvp-page-select-wrap">
+                      <span className="bvp-select-sizer">{rowsPerPage}</span>
+                      <select
+                        value={rowsPerPage}
+                        onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                        className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none"
+                      >
+                        {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
+                      </select>
+                    </span>
                     <span className="ml-2">{total === 0 ? "0-0 of 0" : `${startIdx + 1}-${endIdx} of ${total}`}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2530,10 +2579,11 @@
                             ? <span className="text-ink-400">N/A</span>
                             : (() => {
                                 const fullText = r.assignedSchedulerNames.join(", ");
-                                const shown = r.assignedSchedulerNames.length <= 2
-                                  ? r.assignedSchedulerNames
-                                  : r.assignedSchedulerNames.slice(0, 2);
-                                const suffix = r.assignedSchedulerNames.length > 2 ? ", …" : "";
+                                const hasMore = r.assignedSchedulerNames.length > 2;
+                                const shown = hasMore
+                                  ? r.assignedSchedulerNames.slice(0, 2)
+                                  : r.assignedSchedulerNames;
+                                const suffix = hasMore ? ", …" : "";
                                 const display = (
                                   <>
                                     {shown.map((n, idx, arr) => (
@@ -2545,7 +2595,7 @@
                                     {suffix}
                                   </>
                                 );
-                                return <TruncationTooltip text={fullText} display={display} className="w-full" />;
+                                return <TruncationTooltip text={fullText} display={display} className="w-full" force={hasMore} />;
                               })()
                           }
                         </div>
@@ -2566,11 +2616,14 @@
                 <div className="mt-4 flex items-center justify-between text-[14px] text-ink-700">
                   <div className="flex items-center gap-2">
                     <span>Rows per page</span>
-                    <select value={rowsPerPage}
-                      onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
-                      className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none">
-                      {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
-                    </select>
+                    <span className="bvp-page-select-wrap">
+                      <span className="bvp-select-sizer">{rowsPerPage}</span>
+                      <select value={rowsPerPage}
+                        onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                        className="bvp-page-select h-8 border border-ink-200 rounded px-2 text-[14px] bg-white focus:border-primary-500 focus:outline-none">
+                        {[5, 10, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
+                      </select>
+                    </span>
                     <span className="ml-2">{total === 0 ? "0-0 of 0" : `${startIdx + 1}-${endIdx} of ${total}`}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2681,13 +2734,40 @@
         // The selected destination label — used to block schedulers whose default route matches.
         const selectedDestLabel = destinationOptions.find((o) => o.value === destination)?.label ?? "";
 
+        // Inverse guard: if the user already picked schedulers, any destination that
+        // matches one of their default routes is blocked in the destination dropdown.
+        // Map each default-route label to the list of assigned schedulers using it,
+        // so the tooltip can name the specific scheduler(s) the destination belongs to.
+        const defaultRouteToSchedulers = new Map();
+        assignedSchedulers.filter(Boolean).forEach((sid) => {
+          const s = schedulers.find((x) => x.id === sid);
+          if (!s || !s.defaultRoute) return;
+          const existing = defaultRouteToSchedulers.get(s.defaultRoute) || [];
+          existing.push(s.name);
+          defaultRouteToSchedulers.set(s.defaultRoute, existing);
+        });
+        const destinationOptionsForModal = destinationOptions.map((o) => {
+          const owners = defaultRouteToSchedulers.get(o.label);
+          if (!owners || owners.length === 0) return o;
+          const ownerText = owners.length === 1
+            ? owners[0]
+            : `${owners.slice(0, -1).join(", ")} and ${owners[owners.length - 1]}`;
+          return {
+            ...o,
+            disabled: true,
+            disabledTooltip: owners.length === 1
+              ? `This is the ${ownerText} scheduler's default route`
+              : `This is the ${ownerText} schedulers' default route`,
+          };
+        });
+
         const schedulerOptions = schedulers.map((s) => {
           const matchesOwnDefault = !!(selectedDestLabel && s.defaultRoute && s.defaultRoute === selectedDestLabel);
           return {
             value: s.id,
             label: s.name,
             disabled: matchesOwnDefault,
-            disabledTooltip: matchesOwnDefault ? "This is the scheduler's Default route" : undefined,
+            disabledTooltip: matchesOwnDefault ? "The default route of this scheduler is the selected destination" : undefined,
             warning: !matchesOwnDefault && schedulersWithExistingRule.has(s.id)
               ? "This scheduler already has an Away Mode rule assigned. Selecting it here will update the Away Mode rule and its routing destination."
               : undefined,
@@ -2752,7 +2832,7 @@
                 required
                 value={destination}
                 onChange={setDestination}
-                options={destinationOptions}
+                options={destinationOptionsForModal}
                 placeholder="Select destination…"
               />
 
@@ -2760,7 +2840,7 @@
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-[14px] font-semibold leading-5 tracking-[0.018em] text-ink-700">Expires in</span>
-                  <PortalTooltip text={`Call routing returns to the scheduler's rules after the hh:mm lapse or when Away Mode is turned off manually`} className="group">
+                  <PortalTooltip text={`Call routing returns to the scheduler’s rules after the selected time or when Away Mode is turned off manually.`} className="group">
                     <Icon name="info-circle" size={16} className="text-ink-500 cursor-help group-hover:text-[#244C91] transition-colors" />
                   </PortalTooltip>
                 </div>
@@ -2859,7 +2939,7 @@
                     {hasOngoingHoliday && (
                       <span className="relative group inline-flex">
                         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold bg-secondary-500 text-white cursor-default leading-none">H</span>
-                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+6px)] whitespace-nowrap bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+6px)] max-w-[280px] whitespace-normal break-words bg-ink-900 text-white text-[12px] leading-4 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10">
                           Ongoing holiday
                           <span className="absolute left-1/2 -translate-x-1/2 top-full -mt-px w-0 h-0 border-x-[5px] border-x-transparent border-t-[5px] border-t-ink-900" />
                         </span>
@@ -4638,9 +4718,9 @@
                   <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full ${badgeBg}`}>
                     <span className="text-white text-[10px] font-bold leading-none">{badgeText}</span>
                   </span>
-                  <div className="flex items-center gap-1">
-                    <Icon name="calendar" size={14} className="text-ink-600" />
-                    <span className="text-[12px] font-semibold text-ink-900 whitespace-nowrap">{name}</span>
+                  <div className="flex items-center gap-1 min-w-0 max-w-[240px]">
+                    <Icon name="calendar" size={14} className="text-ink-600 shrink-0" />
+                    <TruncationTooltip text={name} className="flex-1" innerClassName="text-[12px] font-semibold text-ink-900" />
                   </div>
                 </div>
                 <WhenContent />
