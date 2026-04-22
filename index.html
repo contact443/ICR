@@ -799,6 +799,89 @@
         );
       };
 
+      /* Confirmation dialog shown when the user tries to close a modal with
+       * unsaved changes. Renders on top of the owning modal. Clicking the
+       * backdrop dismisses the dialog and returns to the underlying modal.
+       * There is intentionally no close (X) button. */
+      const UnsavedChangesDialog = ({ open, canSave = true, onDiscard, onSaveExit, onCancel }) => {
+        useEffect(() => {
+          if (!open) return;
+          const onKey = (e) => { if (e.key === "Escape") onCancel?.(); };
+          window.addEventListener("keydown", onKey);
+          return () => window.removeEventListener("keydown", onKey);
+        }, [open, onCancel]);
+        if (!open) return null;
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-ink-900/40"
+            onClick={onCancel}
+          >
+            <div
+              className="bg-white rounded-lg shadow-dropdown bvp-animate-in flex flex-col w-[440px] max-w-[95vw]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center h-16 px-6 shrink-0 border-b border-ink-100">
+                <h2 className="font-display text-[16px] font-semibold text-ink-900">Unsaved Changes</h2>
+              </div>
+              <div className="px-6 py-5 text-[14px] leading-5 text-ink-700">
+                You have unsaved changes. Would you like to save before closing?
+              </div>
+              <div className="flex items-center justify-end gap-3 h-[68px] px-6 shrink-0 border-t border-ink-100">
+                <button
+                  type="button"
+                  onClick={onDiscard}
+                  className="inline-flex items-center justify-center h-9 px-3 rounded bg-white border border-[#C70816] text-[#C70816] text-[14px] leading-4 font-bold uppercase tracking-btn select-none transition-colors hover:bg-[#FDECEC] active:bg-[#FBD9D9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C70816] focus-visible:ring-offset-1"
+                >
+                  <span>Discard</span>
+                </button>
+                <Button variant="primary" onClick={onSaveExit} disabled={!canSave}>Save &amp; Exit</Button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      /* Confirmation dialog for destructive actions (deleting a scheduler,
+       * a location holiday, or an away mode rule). Mirrors the look of the
+       * Unsaved Changes dialog but with a solid red Delete button. */
+      const ConfirmDeleteDialog = ({ open, title = "Delete", itemName = "", onCancel, onConfirm }) => {
+        useEffect(() => {
+          if (!open) return;
+          const onKey = (e) => { if (e.key === "Escape") onCancel?.(); };
+          window.addEventListener("keydown", onKey);
+          return () => window.removeEventListener("keydown", onKey);
+        }, [open, onCancel]);
+        if (!open) return null;
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-ink-900/40"
+            onClick={onCancel}
+          >
+            <div
+              className="bg-white rounded-lg shadow-dropdown bvp-animate-in flex flex-col w-[440px] max-w-[95vw]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center h-16 px-6 shrink-0 border-b border-ink-100">
+                <h2 className="font-display text-[16px] font-semibold text-ink-900">{title}</h2>
+              </div>
+              <div className="px-6 py-5 text-[14px] leading-5 text-ink-700">
+                Delete {itemName ? <span className="font-semibold text-ink-900">{itemName}</span> : "this item"}? This action can’t be undone.
+              </div>
+              <div className="flex items-center justify-end gap-3 h-[68px] px-6 shrink-0 border-t border-ink-100">
+                <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+                <button
+                  type="button"
+                  onClick={onConfirm}
+                  className="inline-flex items-center justify-center h-9 px-3 rounded bg-[#C70816] border border-[#C70816] text-white text-[14px] leading-4 font-bold uppercase tracking-btn select-none transition-colors hover:bg-[#A90613] active:bg-[#8F0510] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C70816] focus-visible:ring-offset-1"
+                >
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
       /* =====================================================
        *  SEED DATA
        * ===================================================== */
@@ -1110,11 +1193,18 @@
         const [toast, setToast] = useState(null);
         const [activeTab, setActiveTab] = useState("schedulers");
         const [highlightedIds, setHighlightedIds] = useState({}); // { [id]: true } while in 5s intermediate state
+        // Table rows that should briefly flash #FEF6DB after being created or
+        // edited, keyed by the row's unique id (DID number / holiday id / rule id).
+        const [highlightedRowIds, setHighlightedRowIds] = useState({});
         const [changeSchedulerModal, setChangeSchedulerModal] = useState({ open: false, didNumber: null });
         const [locationHolidays, setLocationHolidays] = useState(locationHolidayCatalog);
         const [locationHolidayEditor, setLocationHolidayEditor] = useState({ open: false, editing: null });
         const [awayRules, setAwayRules] = useState(seedAwayRules);
         const [awayModal, setAwayModal] = useState({ open: false, editing: null });
+        // Shared state for the "Delete ..." confirmation dialog used across
+        // the Schedulers, Location Holidays, and Away Mode tables.
+        const [deleteConfirm, setDeleteConfirm] = useState({ open: false, title: "", itemName: "", onConfirm: null });
+        const closeDeleteConfirm = () => setDeleteConfirm({ open: false, title: "", itemName: "", onConfirm: null });
 
         const showToast = (msg, type = "success") => {
           setToast({ msg, type });
@@ -1130,6 +1220,20 @@
               return next;
             });
           }, 2000);
+        };
+
+        // Flash a table row with #FEF6DB for 1 second after it is created or
+        // edited. Used by the DIDs, Location Holidays, and Away Mode tables.
+        const highlightRow = (id) => {
+          if (id == null) return;
+          setHighlightedRowIds((h) => ({ ...h, [id]: true }));
+          setTimeout(() => {
+            setHighlightedRowIds((h) => {
+              const next = { ...h };
+              delete next[id];
+              return next;
+            });
+          }, 1000);
         };
 
         const filtered = useMemo(() => {
@@ -1154,24 +1258,31 @@
           setEditorOpen(true);
         };
         const onDelete = (s) => {
-          if (!confirm(`Delete scheduler "${s.name}"?`)) return;
-          setSchedulers((ss) => {
-            const remaining = ss.filter((x) => x.id !== s.id);
-            // If we just removed the only default scheduler, promote the first remaining
-            // scheduler so the list always has exactly one default.
-            if (s.isDefault && remaining.length && !remaining.some((x) => x.isDefault)) {
-              return remaining.map((x, i) => (i === 0 ? { ...x, isDefault: true } : x));
-            }
-            return remaining;
+          setDeleteConfirm({
+            open: true,
+            title: "Delete Scheduler",
+            itemName: s.name,
+            onConfirm: () => {
+              setSchedulers((ss) => {
+                const remaining = ss.filter((x) => x.id !== s.id);
+                // If we just removed the only default scheduler, promote the first remaining
+                // scheduler so the list always has exactly one default.
+                if (s.isDefault && remaining.length && !remaining.some((x) => x.isDefault)) {
+                  return remaining.map((x, i) => (i === 0 ? { ...x, isDefault: true } : x));
+                }
+                return remaining;
+              });
+              // Unassign any DIDs that were pointing to this scheduler.
+              setDids((ds) => ds.map((d) => (d.schedulerId === s.id ? { ...d, schedulerId: null } : d)));
+              // Remove this scheduler from any Away Mode rule's assignment list.
+              setAwayRules((rs) => rs.map((r) => ({
+                ...r,
+                schedulerIds: (r.schedulerIds || []).filter((id) => id !== s.id),
+              })));
+              showToast(`Deleted "${s.name}"`);
+              closeDeleteConfirm();
+            },
           });
-          // Unassign any DIDs that were pointing to this scheduler.
-          setDids((ds) => ds.map((d) => (d.schedulerId === s.id ? { ...d, schedulerId: null } : d)));
-          // Remove this scheduler from any Away Mode rule's assignment list.
-          setAwayRules((rs) => rs.map((r) => ({
-            ...r,
-            schedulerIds: (r.schedulerIds || []).filter((id) => id !== s.id),
-          })));
-          showToast(`Deleted "${s.name}"`);
         };
         // Parse a comma-separated DID string into an array of trimmed phone numbers.
         const parseAssignedTo = (s) => (!s ? [] : String(s).split(",").map((x) => x.trim()).filter(Boolean));
@@ -1305,6 +1416,7 @@
                         <DIDsTab
                           dids={dids}
                           schedulers={schedulers}
+                          highlightedRowIds={highlightedRowIds}
                           onChangeScheduler={(didNumber) => setChangeSchedulerModal({ open: true, didNumber })}
                         />
                       )}
@@ -1312,19 +1424,27 @@
                         <LocationHolidaysTab
                           locationHolidays={locationHolidays}
                           schedulers={schedulers}
+                          highlightedRowIds={highlightedRowIds}
                           onNew={() => setLocationHolidayEditor({ open: true, editing: null })}
                           onEdit={(h) => setLocationHolidayEditor({ open: true, editing: { ...h, ...(h.editSource || {}) } })}
                           onDelete={(id) => {
                             const h = locationHolidays.find((x) => x.id === id);
                             if (!h) return;
-                            if (!confirm(`Delete location holiday "${h.name}"?`)) return;
-                            setLocationHolidays((hs) => hs.filter((x) => x.id !== id));
-                            // Also remove reference from any schedulers that had it
-                            setSchedulers((ss) => ss.map((s) => ({
-                              ...s,
-                              locationHolidays: (s.locationHolidays || []).filter((lid) => lid !== id),
-                            })));
-                            showToast(`Deleted "${h.name}"`);
+                            setDeleteConfirm({
+                              open: true,
+                              title: "Delete Location Holiday",
+                              itemName: h.name,
+                              onConfirm: () => {
+                                setLocationHolidays((hs) => hs.filter((x) => x.id !== id));
+                                // Also remove reference from any schedulers that had it
+                                setSchedulers((ss) => ss.map((s) => ({
+                                  ...s,
+                                  locationHolidays: (s.locationHolidays || []).filter((lid) => lid !== id),
+                                })));
+                                showToast(`Deleted "${h.name}"`);
+                                closeDeleteConfirm();
+                              },
+                            });
                           }}
                         />
                       )}
@@ -1332,14 +1452,22 @@
                         <AwayModeTab
                           awayRules={awayRules}
                           schedulers={schedulers}
+                          highlightedRowIds={highlightedRowIds}
                           onNew={() => setAwayModal({ open: true, editing: null })}
                           onEdit={(r) => setAwayModal({ open: true, editing: r })}
                           onDelete={(id) => {
                             const r = awayRules.find((x) => x.id === id);
                             if (!r) return;
-                            if (!confirm(`Delete Away Mode rule "${r.name}"?`)) return;
-                            setAwayRules((rs) => rs.filter((x) => x.id !== id));
-                            showToast(`Deleted "${r.name}"`);
+                            setDeleteConfirm({
+                              open: true,
+                              title: "Delete Away Mode Rule",
+                              itemName: r.name,
+                              onConfirm: () => {
+                                setAwayRules((rs) => rs.filter((x) => x.id !== id));
+                                showToast(`Deleted "${r.name}"`);
+                                closeDeleteConfirm();
+                              },
+                            });
                           }}
                         />
                       )}
@@ -1402,6 +1530,7 @@
                 setChangeSchedulerModal({ open: false, didNumber: null });
                 const sched = schedulers.find((s) => s.id === newSchedulerId);
                 showToast(`Scheduler for ${didNumber} changed to "${sched ? sched.name : ""}"`);
+                highlightRow(didNumber);
               }}
             />
             <CustomHolidayModal
@@ -1427,6 +1556,7 @@
                     editSource: extractEditSource(data),
                   } : h)));
                   showToast(`Updated "${data.name}"`);
+                  highlightRow(data.id);
                 } else {
                   const newId = `lh-${Date.now()}`;
                   const newHoliday = {
@@ -1443,6 +1573,7 @@
                   };
                   setLocationHolidays((hs) => [newHoliday, ...hs]);
                   showToast(`Created "${data.name}"`);
+                  highlightRow(newId);
                 }
                 setLocationHolidayEditor({ open: false, editing: null });
               }}
@@ -1454,18 +1585,28 @@
               awayRules={awayRules}
               onClose={() => setAwayModal({ open: false, editing: null })}
               onSave={(data) => {
+                let savedId = data.id;
                 setAwayRules((rs) => {
                   if (data.id) {
                     return rs.map((r) => (r.id === data.id ? { ...r, ...data } : r));
                   }
                   const newRule = { ...data, id: `am-${Date.now()}` };
+                  savedId = newRule.id;
                   return [newRule, ...rs];
                 });
                 showToast(data.id ? `Updated "${data.name}"` : `Created "${data.name}"`);
+                highlightRow(savedId);
                 setAwayModal({ open: false, editing: null });
               }}
             />
             {toast && <Toast {...toast} />}
+            <ConfirmDeleteDialog
+              open={deleteConfirm.open}
+              title={deleteConfirm.title}
+              itemName={deleteConfirm.itemName}
+              onCancel={closeDeleteConfirm}
+              onConfirm={() => deleteConfirm.onConfirm?.()}
+            />
           </div>
         );
       };
@@ -1893,7 +2034,7 @@
         );
       };
 
-      const DIDsTab = ({ dids, schedulers, onChangeScheduler }) => {
+      const DIDsTab = ({ dids, schedulers, onChangeScheduler, highlightedRowIds = {} }) => {
         const [search, setSearch] = useState("");
         const [sortBy, setSortBy] = useState({ field: "number", dir: "asc" });
         const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -2041,7 +2182,7 @@
                     pageRows.map((d, i) => (
                       <div
                         key={d.number}
-                        className={`grid grid-cols-[repeat(3,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}
+                        className={`grid grid-cols-[repeat(3,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} ${highlightedRowIds[d.number] ? "bg-[#FEF6DB]" : "hover:bg-ink-50/50"} transition-colors`}
                       >
                         <div className="pl-7 pr-3 text-[14px] text-ink-900 min-w-0">
                           <TruncationTooltip text={d.number} display={highlightMatch(d.number, search)} className="w-full" />
@@ -2139,45 +2280,53 @@
 
       const ChangeSchedulerModal = ({ open, onClose, didNumber, currentSchedulerId, schedulers, onSave }) => {
         const [selected, setSelected] = useState(currentSchedulerId || "");
+        const [confirmOpen, setConfirmOpen] = useState(false);
         useEffect(() => {
-          if (open) setSelected(currentSchedulerId || "");
+          if (open) { setSelected(currentSchedulerId || ""); setConfirmOpen(false); }
         }, [open, currentSchedulerId]);
         if (!open) return null;
         const options = schedulers.map((s) => ({ value: s.id, label: s.name }));
         const canSave = selected && selected !== currentSchedulerId;
-        // Modal is "dirty" only when the user has actually picked a different scheduler.
         const dirty = !!(selected && selected !== (currentSchedulerId || ""));
         const requestClose = () => {
-          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
-            onClose?.();
-          }
+          if (!dirty) { onClose?.(); return; }
+          setConfirmOpen(true);
         };
         return (
-          <Modal
-            open={open}
-            onClose={requestClose}
-            title="Change Scheduler"
-            width={307}
-            footer={
-              <>
-                <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
-                <Button variant="primary" size="md" disabled={!canSave} onClick={() => onSave(selected)}>Save</Button>
-              </>
-            }
-          >
-            <div className="pt-4 pb-2 flex flex-col gap-4">
-              <div className="text-[14px] text-ink-900">
-                <span className="font-semibold">DID:</span> <span>{didNumber}</span>
+          <>
+            <Modal
+              open={open}
+              onClose={requestClose}
+              title="Change Scheduler"
+              width={307}
+              footer={
+                <>
+                  <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
+                  <Button variant="primary" size="md" disabled={!canSave} onClick={() => onSave(selected)}>Save</Button>
+                </>
+              }
+            >
+              <div className="pt-4 pb-2 flex flex-col gap-4">
+                <div className="text-[14px] text-ink-900">
+                  <span className="font-semibold">DID:</span> <span>{didNumber}</span>
+                </div>
+                <Select
+                  label="Assigned Scheduler"
+                  value={selected}
+                  onChange={setSelected}
+                  options={options}
+                  placeholder="Select a scheduler"
+                />
               </div>
-              <Select
-                label="Assigned Scheduler"
-                value={selected}
-                onChange={setSelected}
-                options={options}
-                placeholder="Select a scheduler"
-              />
-            </div>
-          </Modal>
+            </Modal>
+            <UnsavedChangesDialog
+              open={confirmOpen}
+              canSave={!!canSave}
+              onCancel={() => setConfirmOpen(false)}
+              onDiscard={() => { setConfirmOpen(false); onClose?.(); }}
+              onSaveExit={() => { setConfirmOpen(false); onSave(selected); }}
+            />
+          </>
         );
       };
 
@@ -2248,7 +2397,7 @@
         );
       };
 
-      const LocationHolidaysTab = ({ locationHolidays, schedulers, onNew, onEdit, onDelete }) => {
+      const LocationHolidaysTab = ({ locationHolidays, schedulers, onNew, onEdit, onDelete, highlightedRowIds = {} }) => {
         const [search, setSearch] = useState("");
         // Default order: unsorted (reflects insertion order — last added at top)
         const [sortBy, setSortBy] = useState({ field: null, dir: "asc" });
@@ -2385,7 +2534,7 @@
                       return (
                       <div
                         key={h.id}
-                        className={`grid grid-cols-[repeat(6,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}
+                        className={`grid grid-cols-[repeat(6,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} ${highlightedRowIds[h.id] ? "bg-[#FEF6DB]" : "hover:bg-ink-50/50"} transition-colors`}
                       >
                         <div className="pl-7 pr-3 text-[14px] text-ink-900 min-w-0">
                           <TruncationTooltip text={h.name} display={highlightMatch(h.name, search)} className="w-full" />
@@ -2548,7 +2697,7 @@
         );
       };
 
-      const AwayModeTab = ({ awayRules, schedulers, onNew, onEdit, onDelete }) => {
+      const AwayModeTab = ({ awayRules, schedulers, onNew, onEdit, onDelete, highlightedRowIds = {} }) => {
         const [search, setSearch] = useState("");
         // Default order: unsorted (reflects insertion order — last added at top)
         const [sortBy, setSortBy] = useState({ field: null, dir: "asc" });
@@ -2670,7 +2819,7 @@
                   ) : (
                     pageRows.map((r, i) => (
                       <div key={r.id}
-                        className={`grid grid-cols-[repeat(4,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} hover:bg-ink-50/50 transition-colors`}>
+                        className={`grid grid-cols-[repeat(4,minmax(0,1fr))_90px] h-[52px] items-center ${i < pageRows.length - 1 ? "border-b border-ink-100" : ""} ${highlightedRowIds[r.id] ? "bg-[#FEF6DB]" : "hover:bg-ink-50/50"} transition-colors`}>
                         <div className="pl-4 pr-3 text-[14px] text-ink-900 min-w-0">
                           <TruncationTooltip text={r.name} display={highlightMatch(r.name, search)} className="w-full" />
                         </div>
@@ -2802,6 +2951,7 @@
         const [expiresMinutes, setExpiresMinutes] = useState(0);
         // assignedSchedulers is an array of scheduler IDs (or empty strings for new rows)
         const [assignedSchedulers, setAssignedSchedulers] = useState([""]);
+        const [confirmOpen, setConfirmOpen] = useState(false);
         // Snapshot of the values at the moment the modal opened — used to
         // disable "Save" until the user actually changes something.
         const initialRef = useRef(null);
@@ -2823,6 +2973,7 @@
           setExpiresHours(init.expiresHours);
           setExpiresMinutes(init.expiresMinutes);
           setAssignedSchedulers(init.schedulerIds);
+          setConfirmOpen(false);
         }, [open, editing]);
 
         if (!open) return null;
@@ -2870,14 +3021,14 @@
           });
         };
 
-        // Wraps onClose to confirm before discarding unsaved changes.
+        // Wraps onClose to prompt before discarding unsaved changes.
         const requestClose = () => {
-          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
-            onClose?.();
-          }
+          if (!dirty) { onClose?.(); return; }
+          setConfirmOpen(true);
         };
 
         return (
+          <>
           <Modal
             open={open}
             onClose={requestClose}
@@ -2971,6 +3122,14 @@
               </div>
             </div>
           </Modal>
+          <UnsavedChangesDialog
+            open={confirmOpen}
+            canSave={!!canSave}
+            onCancel={() => setConfirmOpen(false)}
+            onDiscard={() => { setConfirmOpen(false); onClose?.(); }}
+            onSaveExit={() => { setConfirmOpen(false); handleSave(); }}
+          />
+          </>
         );
       };
 
@@ -3168,6 +3327,8 @@
         // validation errors. When the user comes back to such a tab the
         // offending fields are highlighted with a red stroke.
         const [revealedErrorTabs, setRevealedErrorTabs] = useState(() => new Set());
+        // Controls the "Unsaved Changes" confirmation dialog.
+        const [confirmOpen, setConfirmOpen] = useState(false);
         const [name, setName] = useState(isNewBlank ? "" : (scheduler?.name ?? ""));
         const [defaultRoute, setDefaultRoute] = useState(scheduler?.defaultRoute ?? "");
         const [awayRoute, setAwayRoute] = useState(scheduler?.awayRoute ?? "");
@@ -3220,6 +3381,7 @@
 
             setTab("info");
             setRevealedErrorTabs(new Set());
+            setConfirmOpen(false);
             setName(initialName);
             setDefaultRoute(initialDefaultRoute);
             setAwayRoute(initialAwayRoute);
@@ -3370,12 +3532,14 @@
           }));
         };
 
-        // Wraps onClose to confirm before discarding unsaved changes.
+        // Wraps onClose to prompt before discarding unsaved changes.
         const requestClose = () => {
-          if (!isAnyDirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
-            onClose?.();
-          }
+          if (!isAnyDirty) { onClose?.(); return; }
+          setConfirmOpen(true);
         };
+        // Save & Exit is only possible when the normal Save button would be
+        // enabled — i.e. required fields are filled and no tab has errors.
+        const canSaveExit = Boolean(name.trim() && defaultRoute && isAnyDirty && tabErrors.timeslots.length === 0);
 
         return (
           <>
@@ -3524,6 +3688,13 @@
               catalog={locationHolidaysCatalog}
               onClose={() => setLocationHolidayModal(false)}
               onSave={onSaveLocationHolidays}
+            />
+            <UnsavedChangesDialog
+              open={confirmOpen}
+              canSave={canSaveExit}
+              onCancel={() => setConfirmOpen(false)}
+              onDiscard={() => { setConfirmOpen(false); onClose?.(); }}
+              onSaveExit={() => { setConfirmOpen(false); onExitSave(); }}
             />
           </>
         );
@@ -5391,6 +5562,7 @@
         const [timeConfig, setTimeConfig] = useState("allday");
         const [slots, setSlots] = useState([{ id: "s1", start: "09:00 AM", end: "05:00 PM" }]);
         const [destination, setDestination] = useState("");
+        const [confirmOpen, setConfirmOpen] = useState(false);
         // Snapshot of opening values, used to disable Save until something changes.
         const initialRef = useRef(null);
 
@@ -5432,6 +5604,7 @@
           setSlots(init.slots);
           setDestination(init.destination);
           setCalOpen(false);
+          setConfirmOpen(false);
         }, [open, editing]);
 
         const isOneTime = eventType === "one-time";
@@ -5518,14 +5691,14 @@
         const dayMax = [31,29,31,30,31,30,31,31,30,31,30,31][parseInt(month,10)-1] || 31;
         const clamp = (n) => Math.max(1, Math.min(dayMax, n));
 
-        // Wraps onClose to confirm before discarding unsaved changes.
+        // Wraps onClose to prompt before discarding unsaved changes.
         const requestClose = () => {
-          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
-            onClose?.();
-          }
+          if (!dirty) { onClose?.(); return; }
+          setConfirmOpen(true);
         };
 
         return (
+          <>
           <Modal
             open={open}
             onClose={requestClose}
@@ -5696,6 +5869,14 @@
               )}
             </div>
           </Modal>
+          <UnsavedChangesDialog
+            open={confirmOpen}
+            canSave={!!canSave}
+            onCancel={() => setConfirmOpen(false)}
+            onDiscard={() => { setConfirmOpen(false); onClose?.(); }}
+            onSaveExit={() => { setConfirmOpen(false); handleSave(); }}
+          />
+          </>
         );
       };
 
@@ -5704,12 +5885,14 @@
        * ===================================================== */
       const LocationHolidayModal = ({ open, onClose, selectedIds, onSave, catalog = locationHolidayCatalog }) => {
         const [selected, setSelected] = useState(selectedIds);
+        const [confirmOpen, setConfirmOpen] = useState(false);
         const initialRef = useRef(null);
         useEffect(() => {
           if (open) {
             const init = [...(selectedIds || [])];
             initialRef.current = init;
             setSelected(init);
+            setConfirmOpen(false);
           }
         }, [open, selectedIds]);
         const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -5717,11 +5900,11 @@
         const curSorted = [...selected].sort();
         const dirty = initSorted ? JSON.stringify(initSorted) !== JSON.stringify(curSorted) : false;
         const requestClose = () => {
-          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
-            onClose?.();
-          }
+          if (!dirty) { onClose?.(); return; }
+          setConfirmOpen(true);
         };
         return (
+          <>
           <Modal
             open={open}
             onClose={requestClose}
@@ -5763,6 +5946,14 @@
               ))}
             </div>
           </Modal>
+          <UnsavedChangesDialog
+            open={confirmOpen}
+            canSave={!!dirty}
+            onCancel={() => setConfirmOpen(false)}
+            onDiscard={() => { setConfirmOpen(false); onClose?.(); }}
+            onSaveExit={() => { setConfirmOpen(false); onSave(selected); }}
+          />
+          </>
         );
       };
 
@@ -5770,7 +5961,11 @@
        *  TOAST
        * ===================================================== */
       const Toast = ({ msg, type }) => (
-        <div className="fixed bottom-6 right-6 z-[60] bg-ink-900 text-white rounded shadow-dropdown px-4 h-10 flex items-center gap-2 bvp-animate-in">
+        // Positioned below the stacked page headers (TopNav 60px + Breadcrumb
+        // 32px + CustomerBar 44px = 136px) with a 16px gap, horizontally
+        // centered on the screen. No fade animation — appears and disappears
+        // instantly.
+        <div className="fixed top-[152px] left-1/2 -translate-x-1/2 z-[60] bg-ink-900 text-white rounded shadow-dropdown px-4 h-10 flex items-center gap-2">
           <Icon name={type === "success" ? "check" : "info"} size={16} />
           <span className="text-[14px]">{msg}</span>
         </div>
