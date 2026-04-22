@@ -3025,6 +3025,14 @@
                     <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Assigned to:</span> <span className="font-semibold">{scheduler.assignedTo && scheduler.assignedTo.trim() ? scheduler.assignedTo : "N/A"}</span></p>
                     <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Default route:</span> <span className="font-semibold">{scheduler.defaultRoute && scheduler.defaultRoute.trim() ? scheduler.defaultRoute : "N/A"}</span></p>
                     <p className="text-[14px] leading-5 text-ink-700 flex items-center gap-1 flex-wrap">
+                      {/* Away Mode status dot: yellow when ON, grey when OFF.
+                          The parent's gap-1 (4px) plus mr-1 (4px) produces
+                          the required 8px of spacing to the label. */}
+                      <span
+                        aria-hidden="true"
+                        className="inline-block w-[10px] h-[10px] rounded-full shrink-0 mr-1"
+                        style={{ backgroundColor: awayRouteDisplay && awayRouteDisplay.trim() ? "#FBBD00" : "#BFC2C6" }}
+                      />
                       <span className="text-ink-500">Away Mode:</span>
                       {awayRouteDisplay && awayRouteDisplay.trim() ? (
                         <>
