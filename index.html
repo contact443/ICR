@@ -518,7 +518,7 @@
       };
 
       // Text input (floating label style matches Figma Input component)
-      const Input = ({ label, value, onChange, placeholder, required, assistive, className = "", disabled }) => (
+      const Input = ({ label, value, onChange, placeholder, required, assistive, className = "", disabled, error = false }) => (
         <div className={`flex flex-col gap-1 ${className}`}>
           {label && (
             <label className="text-[14px] font-semibold leading-5 tracking-[0.018em] text-ink-700 flex gap-0.5">
@@ -532,19 +532,25 @@
             onChange={(e) => onChange?.(e.target.value)}
             placeholder={placeholder}
             disabled={disabled}
-            className="h-8 px-3 py-1.5 text-[14px] leading-5 tracking-[0.018em] text-ink-900 bg-white border border-ink-200 rounded hover:border-ink-400 focus:border-primary-500 focus:outline-none focus:ring-0 disabled:bg-ink-50 disabled:text-ink-400 placeholder:text-ink-400"
+            className={`h-8 px-3 py-1.5 text-[14px] leading-5 tracking-[0.018em] text-ink-900 bg-white border rounded focus:outline-none focus:ring-0 disabled:bg-ink-50 disabled:text-ink-400 placeholder:text-ink-400 ${
+              error
+                ? "border-[#B3261E] hover:border-[#B3261E] focus:border-[#B3261E]"
+                : "border-ink-200 hover:border-ink-400 focus:border-primary-500"
+            }`}
           />
           {assistive && <div className="text-[12px] leading-4 text-ink-500">{assistive}</div>}
         </div>
       );
 
       // Select dropdown (renders its menu via portal so it escapes any overflow:hidden/auto ancestors)
-      const Select = ({ label, value, onChange, options, placeholder, required, className = "", disabled, dirty }) => {
+      const Select = ({ label, value, onChange, options, placeholder, required, className = "", disabled, dirty, error = false }) => {
         const [open, setOpen] = useState(false);
+        const [search, setSearch] = useState("");
         const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
         const wrapRef = useRef(null);
         const btnRef = useRef(null);
         const menuRef = useRef(null);
+        const inputRef = useRef(null);
         const updatePos = () => {
           if (!btnRef.current) return;
           const r = btnRef.current.getBoundingClientRect();
@@ -553,6 +559,10 @@
         useEffect(() => {
           if (!open) return;
           updatePos();
+          // Reset the search query each time the dropdown opens, and focus
+          // the embedded input so the user can immediately type to filter.
+          setSearch("");
+          requestAnimationFrame(() => inputRef.current?.focus());
           const onDoc = (e) => {
             if (wrapRef.current && wrapRef.current.contains(e.target)) return;
             if (menuRef.current && menuRef.current.contains(e.target)) return;
@@ -568,7 +578,12 @@
             window.removeEventListener("resize", onScroll);
           };
         }, [open]);
-        const selectedLabel = options.find((o) => o.value === value)?.label ?? placeholder ?? "Select…";
+        const selectedOption = options.find((o) => o.value === value);
+        const selectedLabel = selectedOption?.label ?? placeholder ?? "Select…";
+        const q = search.trim().toLowerCase();
+        const filteredOptions = q
+          ? options.filter((o) => (o.label || "").toLowerCase().includes(q))
+          : options;
         return (
           <div className={`flex flex-col gap-1 ${className}`} ref={wrapRef}>
             {label && (
@@ -577,47 +592,102 @@
                 {required && <span className="text-[#D23C4A]">*</span>}
               </label>
             )}
-            <button
+            <div
               ref={btnRef}
-              type="button"
-              onClick={() => !disabled && setOpen((x) => !x)}
-              disabled={disabled}
-              className={`relative h-8 pl-3 pr-8 text-left text-[14px] leading-5 tracking-[0.018em] text-ink-900 bg-white border ${dirty ? "border-ink-500" : "border-ink-200"} rounded hover:border-ink-400 focus:border-primary-500 focus:outline-none disabled:bg-ink-50 disabled:text-ink-400`}
+              className={`relative h-8 bg-white border rounded ${
+                error
+                  ? "border-[#B3261E]"
+                  : dirty
+                    ? "border-ink-500"
+                    : "border-ink-200"
+              } ${disabled ? "bg-ink-50" : error ? "hover:border-[#B3261E] focus-within:border-[#B3261E]" : "hover:border-ink-400 focus-within:border-primary-500"}`}
             >
-              <span className={!options.find((o) => o.value === value) ? "text-ink-400" : ""}>{selectedLabel}</span>
-              <Icon name={open ? "chevron-up" : "chevron-down"} size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-600" />
-            </button>
+              {open ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={search}
+                  placeholder={selectedLabel}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } }}
+                  className="w-full h-full pl-3 pr-8 bg-transparent text-[14px] leading-5 tracking-[0.018em] text-ink-900 placeholder:text-ink-400 focus:outline-none rounded"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => !disabled && setOpen(true)}
+                  disabled={disabled}
+                  className="w-full h-full pl-3 pr-8 text-left text-[14px] leading-5 tracking-[0.018em] text-ink-900 disabled:text-ink-400 focus:outline-none rounded"
+                >
+                  <span className={selectedOption ? "" : "text-ink-400"}>{selectedLabel}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                tabIndex={-1}
+                aria-label={open ? "Close dropdown" : "Open dropdown"}
+                onMouseDown={(e) => { e.preventDefault(); }}
+                onClick={() => { if (!disabled) setOpen((x) => !x); }}
+                disabled={disabled}
+                className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center text-ink-600 disabled:text-ink-400"
+              >
+                <Icon name={open ? "chevron-up" : "chevron-down"} size={16} />
+              </button>
+            </div>
             {open && ReactDOM.createPortal(
               <div
                 ref={menuRef}
                 className="fixed z-[9999] bg-white border border-ink-100 rounded shadow-dropdown py-1 max-h-60 overflow-auto bvp-scroll bvp-animate-in"
                 style={{ top: pos.top, left: pos.left, width: pos.width }}
               >
-                {options.map((o) => {
-                  const isDisabled = !!o.disabled;
-                  const label = <span>{o.label}</span>;
-                  const labelNode = isDisabled && o.disabledTooltip
-                    ? <PortalTooltip text={o.disabledTooltip}>{label}</PortalTooltip>
-                    : label;
-                  return (
-                    <div
-                      key={o.value}
-                      onClick={() => { if (isDisabled) return; onChange?.(o.value); setOpen(false); }}
-                      className={`px-3 py-1.5 text-[14px] leading-5 flex items-center gap-2 ${
-                        isDisabled
-                          ? "cursor-not-allowed text-ink-400"
-                          : `cursor-pointer bvp-row-hover ${value === o.value ? "text-primary-500 font-semibold bg-primary-25" : "text-ink-900"}`
-                      }`}
-                    >
-                      {labelNode}
-                      {o.warning && !isDisabled && (
-                        <PortalTooltip text={o.warning} className="group">
-                          <Icon name="warning-circle" size={14} className="text-[#7F888F] group-hover:text-[#244C91] transition-colors" />
-                        </PortalTooltip>
-                      )}
-                    </div>
-                  );
-                })}
+                {filteredOptions.length === 0 ? (
+                  <div className="px-3 py-1.5 text-[14px] leading-5 text-ink-400">No matches</div>
+                ) : (() => {
+                  // Render group headers when consecutive options have a
+                  // different `group` value. Options without a group render
+                  // exactly as before (no header).
+                  let lastGroup = null;
+                  const out = [];
+                  filteredOptions.forEach((o, i) => {
+                    if (o.group && o.group !== lastGroup) {
+                      out.push(
+                        <div
+                          key={`__group_${o.group}_${i}`}
+                          className={`px-3 pt-2 pb-1 text-[11px] leading-4 font-semibold uppercase tracking-[0.06em] text-ink-500 select-none ${lastGroup ? "border-t border-ink-100 mt-1" : ""}`}
+                        >
+                          {o.group}
+                        </div>
+                      );
+                      lastGroup = o.group;
+                    } else if (!o.group) {
+                      lastGroup = null;
+                    }
+                    const isDisabled = !!o.disabled;
+                    const label = <span>{highlightMatch(o.label, search)}</span>;
+                    const labelNode = isDisabled && o.disabledTooltip
+                      ? <PortalTooltip text={o.disabledTooltip}>{label}</PortalTooltip>
+                      : label;
+                    out.push(
+                      <div
+                        key={o.value}
+                        onClick={() => { if (isDisabled) return; onChange?.(o.value); setOpen(false); }}
+                        className={`px-3 py-1.5 text-[14px] leading-5 flex items-center gap-2 ${
+                          isDisabled
+                            ? "cursor-not-allowed text-ink-400"
+                            : `cursor-pointer bvp-row-hover ${value === o.value ? "text-primary-500 font-semibold bg-primary-25" : "text-ink-900"}`
+                        }`}
+                      >
+                        {labelNode}
+                        {o.warning && !isDisabled && (
+                          <PortalTooltip text={o.warning} className="group">
+                            <Icon name="warning-circle" size={14} className="text-[#7F888F] group-hover:text-[#244C91] transition-colors" />
+                          </PortalTooltip>
+                        )}
+                      </div>
+                    );
+                  });
+                  return out;
+                })()}
               </div>,
               document.body
             )}
@@ -772,6 +842,7 @@
           assignedTo: "(805) 234-8129, (805) 234-5534",
           defaultRoute: "Attendant [8022]",
           awayRoute: "Ring Some [8856]",
+          awayModeOff: true,
           timeSlots: [
             { id: "ts3", days: "Monday - Friday", range: "12:00 AM - 1:00 PM", dest: "Main Reception [6678]" },
             { id: "ts4", days: "Monday - Friday", range: "1:00 PM - 5:00 PM", dest: "Front Desk [3390]" },
@@ -862,12 +933,41 @@
       ];
 
       const destinationOptions = [
-        { value: "main-6678",     label: "Main Reception [6678]" },
-        { value: "front-3390",    label: "Front Desk [3390]" },
-        { value: "holiday-2243",  label: "Holiday Greeting [2243]" },
-        { value: "attendant-8022",label: "Attendant [8022]" },
-        { value: "conf-1004",     label: "Conference Room 4 Line 1 [1004]" },
-        { value: "ring-8990",     label: "Ring All [8990]" },
+        // Extensions
+        { value: "main-6678",         label: "Main Reception [6678]",            group: "Extensions" },
+        { value: "front-3390",        label: "Front Desk [3390]",                group: "Extensions" },
+        { value: "ext-3500",          label: "Office Manager Desk [3500]",       group: "Extensions" },
+        { value: "ext-3501",          label: "Sales Director Desk [3501]",       group: "Extensions" },
+        { value: "ext-3502",          label: "CEO Office [3502]",                group: "Extensions" },
+        // Ring Groups
+        { value: "ring-some-8856",    label: "Ring Some [8856]",                 group: "Ring Groups" },
+        { value: "park-7000",         label: "Call Park Lot [7000]",             group: "Ring Groups" },
+        { value: "ring-8990",         label: "Ring All [8990]",                  group: "Ring Groups" },
+        // Queues
+        { value: "queue-9001",        label: "Sales Queue [9001]",               group: "Queues" },
+        { value: "queue-9002",        label: "Support Queue [9002]",             group: "Queues" },
+        { value: "queue-9003",        label: "Billing Queue [9003]",             group: "Queues" },
+        // Recordings
+        { value: "holiday-2243",      label: "Holiday Greeting [2243]",          group: "Recordings" },
+        // Automated Attendants
+        { value: "attendant-8022",    label: "Attendant [8022]",                 group: "Automated Attendants" },
+        { value: "ivr-5000",          label: "Main IVR [5000]",                  group: "Automated Attendants" },
+        { value: "operator-0",        label: "Operator [0]",                     group: "Automated Attendants" },
+        { value: "ext-3791",          label: "Reception Phone [3791]",           group: "Automated Attendants" },
+        { value: "ext-3456",          label: "Yealink T48 Main [3456]",          group: "Automated Attendants" },
+        { value: "ext-emergency-911", label: "Emergency Forwarding [911]",       group: "Automated Attendants" },
+        // Voicemail Groups
+        { value: "voicemail-7700",    label: "General Voicemail [7700]",         group: "Voicemail Groups" },
+        { value: "ivr-5001",          label: "After Hours IVR [5001]",           group: "Voicemail Groups" },
+        // Conference Rooms
+        { value: "conf-1001",         label: "Conference Room 1 Line 1 [1001]",  group: "Conference Rooms" },
+        { value: "conf-1002",         label: "Conference Room 2 Line 1 [1002]",  group: "Conference Rooms" },
+        { value: "conf-1004",         label: "Conference Room 4 Line 1 [1004]",  group: "Conference Rooms" },
+        // Linear Hunt Groups
+        { value: "hg-marketing-200",  label: "Marketing Hunt Group [200]",       group: "Linear Hunt Groups" },
+        { value: "hg-engineering-201",label: "Engineering Hunt Group [201]",     group: "Linear Hunt Groups" },
+        { value: "hg-finance-202",    label: "Finance Hunt Group [202]",         group: "Linear Hunt Groups" },
+        { value: "hg-hr-203",         label: "HR Hunt Group [203]",              group: "Linear Hunt Groups" },
       ];
 
       // All DIDs on this account. assignedElsewhere = already attached to another scheduler.
@@ -905,7 +1005,7 @@
           toggleDestination: "Toggle1 [1234]",
           expiresHours: 24,
           expiresMinutes: 0,
-          schedulerIds: ["ss"],
+          schedulerIds: [],
         },
         {
           id: "am-office",
@@ -1147,6 +1247,9 @@
               id: newId,
               name: data.name || "New Scheduler",
               isDefault: mustBeDefault ? true : !!data.isDefault,
+              // Newly created schedulers start with Away Mode explicitly toggled
+              // off, so their card shows "OFF" instead of "N/A".
+              awayModeOff: true,
             };
             // If this scheduler is being flagged as default, clear isDefault on any other scheduler.
             setSchedulers((ss) => {
@@ -1351,20 +1454,12 @@
               awayRules={awayRules}
               onClose={() => setAwayModal({ open: false, editing: null })}
               onSave={(data) => {
-                // Enforce "one Away Mode rule per scheduler": any scheduler assigned
-                // to this rule is removed from every other rule's assignment list.
-                const ownedIds = new Set(data.schedulerIds || []);
                 setAwayRules((rs) => {
-                  const stripped = rs.map((r) => {
-                    if (data.id && r.id === data.id) return r;
-                    const nextIds = (r.schedulerIds || []).filter((sid) => !ownedIds.has(sid));
-                    return nextIds.length === (r.schedulerIds || []).length ? r : { ...r, schedulerIds: nextIds };
-                  });
                   if (data.id) {
-                    return stripped.map((r) => (r.id === data.id ? { ...r, ...data } : r));
+                    return rs.map((r) => (r.id === data.id ? { ...r, ...data } : r));
                   }
                   const newRule = { ...data, id: `am-${Date.now()}` };
-                  return [newRule, ...stripped];
+                  return [newRule, ...rs];
                 });
                 showToast(data.id ? `Updated "${data.name}"` : `Created "${data.name}"`);
                 setAwayModal({ open: false, editing: null });
@@ -2050,15 +2145,22 @@
         if (!open) return null;
         const options = schedulers.map((s) => ({ value: s.id, label: s.name }));
         const canSave = selected && selected !== currentSchedulerId;
+        // Modal is "dirty" only when the user has actually picked a different scheduler.
+        const dirty = !!(selected && selected !== (currentSchedulerId || ""));
+        const requestClose = () => {
+          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
+            onClose?.();
+          }
+        };
         return (
           <Modal
             open={open}
-            onClose={onClose}
+            onClose={requestClose}
             title="Change Scheduler"
             width={307}
             footer={
               <>
-                <Button variant="secondary" size="md" onClick={onClose}>Cancel</Button>
+                <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
                 <Button variant="primary" size="md" disabled={!canSave} onClick={() => onSave(selected)}>Save</Button>
               </>
             }
@@ -2725,55 +2827,12 @@
 
         if (!open) return null;
 
-        // Compute which schedulers already have an away mode rule assigned (excluding the one being edited)
-        const schedulersWithExistingRule = new Set();
-        awayRules.forEach((r) => {
-          if (editing && r.id === editing.id) return;
-          (r.schedulerIds || []).forEach((sid) => schedulersWithExistingRule.add(sid));
-        });
+        const destinationOptionsForModal = destinationOptions;
 
-        // The selected destination label — used to block schedulers whose default route matches.
-        const selectedDestLabel = destinationOptions.find((o) => o.value === destination)?.label ?? "";
-
-        // Inverse guard: if the user already picked schedulers, any destination that
-        // matches one of their default routes is blocked in the destination dropdown.
-        // Map each default-route label to the list of assigned schedulers using it,
-        // so the tooltip can name the specific scheduler(s) the destination belongs to.
-        const defaultRouteToSchedulers = new Map();
-        assignedSchedulers.filter(Boolean).forEach((sid) => {
-          const s = schedulers.find((x) => x.id === sid);
-          if (!s || !s.defaultRoute) return;
-          const existing = defaultRouteToSchedulers.get(s.defaultRoute) || [];
-          existing.push(s.name);
-          defaultRouteToSchedulers.set(s.defaultRoute, existing);
-        });
-        const destinationOptionsForModal = destinationOptions.map((o) => {
-          const owners = defaultRouteToSchedulers.get(o.label);
-          if (!owners || owners.length === 0) return o;
-          const ownerText = owners.length === 1
-            ? owners[0]
-            : `${owners.slice(0, -1).join(", ")} and ${owners[owners.length - 1]}`;
-          return {
-            ...o,
-            disabled: true,
-            disabledTooltip: owners.length === 1
-              ? `This is the ${ownerText} scheduler's default route`
-              : `This is the ${ownerText} schedulers' default route`,
-          };
-        });
-
-        const schedulerOptions = schedulers.map((s) => {
-          const matchesOwnDefault = !!(selectedDestLabel && s.defaultRoute && s.defaultRoute === selectedDestLabel);
-          return {
-            value: s.id,
-            label: s.name,
-            disabled: matchesOwnDefault,
-            disabledTooltip: matchesOwnDefault ? "The default route of this scheduler is the selected destination" : undefined,
-            warning: !matchesOwnDefault && schedulersWithExistingRule.has(s.id)
-              ? "This scheduler already has an Away Mode rule assigned. Selecting it here will update the Away Mode rule and its routing destination."
-              : undefined,
-          };
-        });
+        const schedulerOptions = schedulers.map((s) => ({
+          value: s.id,
+          label: s.name,
+        }));
 
         // Don't allow the same scheduler to be selected twice — filter options per row
         const optionsForRow = (idx) => {
@@ -2811,16 +2870,23 @@
           });
         };
 
+        // Wraps onClose to confirm before discarding unsaved changes.
+        const requestClose = () => {
+          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
+            onClose?.();
+          }
+        };
+
         return (
           <Modal
             open={open}
-            onClose={onClose}
+            onClose={requestClose}
             title="Away Mode Rule"
             width={524}
             outerHeight={500}
             footer={
               <>
-                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button variant="secondary" onClick={requestClose}>Cancel</Button>
                 <Button variant="primary" onClick={handleSave} disabled={!canSave}>Save</Button>
               </>
             }
@@ -2958,7 +3024,18 @@
                   <div className="flex flex-col gap-2">
                     <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Assigned to:</span> <span className="font-semibold">{scheduler.assignedTo && scheduler.assignedTo.trim() ? scheduler.assignedTo : "N/A"}</span></p>
                     <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Default route:</span> <span className="font-semibold">{scheduler.defaultRoute && scheduler.defaultRoute.trim() ? scheduler.defaultRoute : "N/A"}</span></p>
-                    <p className="text-[14px] leading-5 text-ink-700"><span className="text-ink-500">Away Mode route:</span> <span className="font-semibold">{awayRouteDisplay && awayRouteDisplay.trim() ? awayRouteDisplay : "N/A"}</span></p>
+                    <p className="text-[14px] leading-5 text-ink-700 flex items-center gap-1 flex-wrap">
+                      <span className="text-ink-500">Away Mode:</span>
+                      {awayRouteDisplay && awayRouteDisplay.trim() ? (
+                        <>
+                          <span className="font-semibold">ON</span>
+                          <Icon name="arrow-right" size={14} className="text-ink-500" />
+                          <span className="font-semibold">{awayRouteDisplay}</span>
+                        </>
+                      ) : (
+                        <span className="font-semibold">{scheduler.awayModeOff ? "OFF" : "N/A"}</span>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -3075,17 +3152,14 @@
         const isExisting = !!(scheduler && scheduler.id);
         const isNewBlank = !scheduler; // opened from "New Scheduler" with no draft
 
-        // Look up this scheduler's existing Away Mode route (used to block the
-        // same destination from being chosen as the default route below).
-        const awayRuleForScheduler = scheduler && scheduler.id
-          ? awayRules.find((r) => (r.schedulerIds || []).includes(scheduler.id))
-          : null;
-        const awayRouteForScheduler = awayRuleForScheduler ? awayRuleForScheduler.destination : "";
-
         // Parse a comma-separated DID string into an array.
         const parseDIDs = (s) => (!s ? [] : String(s).split(",").map((x) => x.trim()).filter(Boolean));
 
         const [tab, setTab] = useState("info");
+        // Tabs that have been navigated away from while still containing
+        // validation errors. When the user comes back to such a tab the
+        // offending fields are highlighted with a red stroke.
+        const [revealedErrorTabs, setRevealedErrorTabs] = useState(() => new Set());
         const [name, setName] = useState(isNewBlank ? "" : (scheduler?.name ?? ""));
         const [defaultRoute, setDefaultRoute] = useState(scheduler?.defaultRoute ?? "");
         const [awayRoute, setAwayRoute] = useState(scheduler?.awayRoute ?? "");
@@ -3137,6 +3211,7 @@
             };
 
             setTab("info");
+            setRevealedErrorTabs(new Set());
             setName(initialName);
             setDefaultRoute(initialDefaultRoute);
             setAwayRoute(initialAwayRoute);
@@ -3169,6 +3244,54 @@
         }, [name, defaultRoute, awayRoute, isDefault, assignedDIDs, timeSlots, customHolidays, locationHolidays]);
 
         const isAnyDirty = tabDirty.info || tabDirty.timeslots || tabDirty.holidays;
+
+        // Per-tab validation errors (unfilled required fields or data errors).
+        // Each entry is an array of human-readable error messages so the tab's
+        // red error badge can show a tooltip listing exactly what's blocking
+        // the user from saving.
+        const tabErrors = useMemo(() => {
+          const info = [];
+          if (!name.trim()) info.push("Scheduler name is required");
+          if (!defaultRoute) info.push("Default route is required");
+
+          const timeslots = [];
+          (timeSlots || []).forEach((raw, idx) => {
+            const ts = (raw && raw.start && raw.end) ? raw : (() => {
+              const parts = String(raw?.range || "").split(/\s*-\s*/);
+              return { ...raw, start: parts[0] || "", end: parts[1] || "" };
+            })();
+            const slotLabel = `Slot ${idx + 1}`;
+            const hasDays = normalizeDays(ts.days).length > 0;
+            const hasDest = !!(ts.dest && String(ts.dest).trim());
+            const hasStart = !!(ts.start && String(ts.start).trim());
+            const hasEnd = !!(ts.end && String(ts.end).trim());
+            if (!hasDays) timeslots.push(`${slotLabel}: select day(s)`);
+            if (!hasDest) timeslots.push(`${slotLabel}: select a destination`);
+            if (!hasStart) timeslots.push(`${slotLabel}: start time is required`);
+            if (!hasEnd) timeslots.push(`${slotLabel}: end time is required`);
+            if (hasStart && hasEnd && parseTimeToMinutes(ts.start) >= parseTimeToMinutes(ts.end)) {
+              timeslots.push(`${slotLabel}: start time must be before end time`);
+            }
+          });
+
+          const holidays = [];
+
+          return { info, timeslots, holidays };
+        }, [name, defaultRoute, timeSlots]);
+
+        // Switch the active tab; if the tab being left has validation errors,
+        // remember that so the next time the user returns to it the offending
+        // fields are highlighted in red.
+        const switchTab = (newTab) => {
+          if (newTab === tab) return;
+          if ((tabErrors[tab] || []).length > 0) {
+            setRevealedErrorTabs((prev) => {
+              if (prev.has(tab)) return prev;
+              const n = new Set(prev); n.add(tab); return n;
+            });
+          }
+          setTab(newTab);
+        };
 
         if (!open) return null;
 
@@ -3211,7 +3334,14 @@
         const filterBySearch = (list) => {
           const q = didSearch.trim().toLowerCase();
           if (!q) return list;
-          return list.filter((x) => (x.number || x).toLowerCase().includes(q));
+          // Strip brackets/spaces/hyphens so "8054" matches "(805) 413-6703",
+          // mirroring the DIDs page behaviour.
+          const stripPhone = (s) => (s || "").toLowerCase().replace(/[()\s-]/g, "");
+          const qStripped = stripPhone(q);
+          return list.filter((x) => {
+            const n = (x.number || x || "").toString().toLowerCase();
+            return n.includes(q) || (qStripped && stripPhone(n).includes(qStripped));
+          });
         };
         const moveToAssigned = () => {
           const picks = didSelection.available;
@@ -3232,9 +3362,16 @@
           }));
         };
 
+        // Wraps onClose to confirm before discarding unsaved changes.
+        const requestClose = () => {
+          if (!isAnyDirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
+            onClose?.();
+          }
+        };
+
         return (
           <>
-            <div className="fixed inset-0 z-40 bg-ink-900/40 flex items-center justify-center p-6" onClick={onClose}>
+            <div className="fixed inset-0 z-40 bg-ink-900/40 flex items-center justify-center p-6" onClick={requestClose}>
               <div
                 className="bg-white rounded-lg shadow-dropdown flex flex-col max-h-[92vh] w-[800px] max-w-[95vw] bvp-animate-in"
                 onClick={(e) => e.stopPropagation()}
@@ -3244,10 +3381,10 @@
                   <div className="flex items-center gap-3">
                     <h2 className="font-display text-[18px] font-semibold text-ink-900 leading-none">Scheduler</h2>
                     <span className="text-[12px] uppercase tracking-btnSm text-ink-500 font-semibold leading-none">
-                      {name && name.trim() ? name : "New Scheduler"}
+                      {name && name.trim() ? name : "Scheduler name"}
                     </span>
                   </div>
-                  <IconButton name="close" title="Close" onClick={onClose} />
+                  <IconButton name="close" title="Close" onClick={requestClose} />
                 </div>
 
                 {/* Inner tabs (fixed) */}
@@ -3260,10 +3397,33 @@
                     ].map((t) => {
                       const isActive = tab === t.id;
                       const isDirty = tabDirty[t.id];
+                      const errors = tabErrors[t.id] || [];
+                      const showErrorBadge = errors.length > 0 && !isActive;
+                      const errorIcon = (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 12 12"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="shrink-0"
+                          aria-label="Tab has errors or unfilled required fields"
+                        >
+                          <path d="M6 0C2.688 0 0 2.688 0 6C0 9.312 2.688 12 6 12C9.312 12 12 9.312 12 6C12 2.688 9.312 0 6 0ZM6 6.6C5.67 6.6 5.4 6.33 5.4 6V3.6C5.4 3.27 5.67 3 6 3C6.33 3 6.6 3.27 6.6 3.6V6C6.6 6.33 6.33 6.6 6 6.6ZM6.6 9H5.4V7.8H6.6V9Z" fill="#C70816"/>
+                        </svg>
+                      );
+                      const errorTooltipText = (
+                        <div className="flex flex-col gap-1 text-left">
+                          <div className="font-semibold">Fix the following to save:</div>
+                          {errors.map((msg, i) => (
+                            <div key={i}>• {msg}</div>
+                          ))}
+                        </div>
+                      );
                       return (
                         <button
                           key={t.id}
-                          onClick={() => setTab(t.id)}
+                          onClick={() => switchTab(t.id)}
                           className={`inline-flex items-center h-9 px-[14px] rounded-lg text-[14px] font-semibold transition-colors ${
                             isActive
                               ? "bg-white border border-ink-100 text-ink-900 shadow-[0_0_12px_0_rgba(0,0,0,0.12)]"
@@ -3271,12 +3431,16 @@
                           }`}
                         >
                           <span>{t.label}</span>
-                          {isDirty && (
+                          {showErrorBadge ? (
+                            <PortalTooltip text={errorTooltipText} className="ml-1.5">
+                              {errorIcon}
+                            </PortalTooltip>
+                          ) : isDirty ? (
                             <span
-                              className="inline-block w-1.5 h-1.5 rounded-full bg-secondary-500 ml-1.5"
+                              className="inline-block w-3 h-3 rounded-full bg-secondary-500 ml-1.5 shrink-0"
                               aria-label="Unsaved changes"
                             />
-                          )}
+                          ) : null}
                         </button>
                       );
                     })}
@@ -3299,11 +3463,17 @@
                       moveToAssigned={moveToAssigned}
                       moveToAvailable={moveToAvailable}
                       filterBySearch={filterBySearch}
-                      awayRouteForScheduler={awayRouteForScheduler}
+                      showErrors={revealedErrorTabs.has("info")}
                     />
                   )}
                   {tab === "timeslots" && (
-                    <TimeSlotsTab timeSlots={timeSlots} setTimeSlots={setTimeSlots} defaultRoute={defaultRoute} />
+                    <TimeSlotsTab
+                      timeSlots={timeSlots}
+                      setTimeSlots={setTimeSlots}
+                      defaultRoute={defaultRoute}
+                      hasErrors={tabErrors.timeslots.length > 0}
+                      showErrors={revealedErrorTabs.has("timeslots")}
+                    />
                   )}
                   {tab === "holidays" && (
                     <HolidaysTab
@@ -3321,11 +3491,11 @@
 
                 {/* Footer */}
                 <div className="flex items-center justify-end gap-3 h-[68px] px-6 border-t border-ink-100 shrink-0">
-                  <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                  <Button variant="secondary" onClick={requestClose}>Cancel</Button>
                   <Button
                     variant="primary"
                     onClick={onExitSave}
-                    disabled={!name.trim() || !defaultRoute || !isAnyDirty}
+                    disabled={!name.trim() || !defaultRoute || !isAnyDirty || tabErrors.timeslots.length > 0}
                   >Save</Button>
                 </div>
               </div>
@@ -3361,25 +3531,23 @@
         didSelection, togglePick,
         moveToAssigned, moveToAvailable,
         filterBySearch,
-        awayRouteForScheduler = "",
+        showErrors = false,
       }) => {
+        const nameError = showErrors && !String(name || "").trim();
+        const defaultRouteError = showErrors && !defaultRoute;
         const filteredAssigned = filterBySearch(assignedDIDs.map((n) => ({ number: n })));
         const filteredAvailable = filterBySearch(availableDIDs);
-        const defaultRouteOptions = destinationOptions.map((o) => {
-          const isAwayMatch = !!(awayRouteForScheduler && awayRouteForScheduler === o.label);
-          return {
-            value: o.label,
-            label: o.label,
-            disabled: isAwayMatch,
-            disabledTooltip: isAwayMatch ? "This is the scheduler's Away Mode route" : undefined,
-          };
-        });
+        const defaultRouteOptions = destinationOptions.map((o) => ({
+          value: o.label,
+          label: o.label,
+          group: o.group,
+        }));
         return (
           <div className="flex flex-col gap-6">
             {/* Top fields */}
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Scheduler name" required value={name} onChange={setName} placeholder="Scheduler Name" />
+                <Input label="Scheduler name" required value={name} onChange={setName} placeholder="Scheduler Name" error={nameError} />
                 <Select
                   label="Default route"
                   required
@@ -3387,6 +3555,7 @@
                   onChange={setDefaultRoute}
                   options={defaultRouteOptions}
                   placeholder="Select destination"
+                  error={defaultRouteError}
                 />
               </div>
               {/* Make default scheduler */}
@@ -3617,7 +3786,7 @@
         return merged;
       };
 
-      const DaysMultiSelect = ({ label, value, onChange, dirty, placeholder = "Select week day(s)" }) => {
+      const DaysMultiSelect = ({ label, value, onChange, dirty, placeholder = "Select week day(s)", error = false }) => {
         const [open, setOpen] = useState(false);
         const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
         const wrapRef = useRef(null);
@@ -3665,7 +3834,11 @@
                 ref={btnRef}
                 type="button"
                 onClick={() => setOpen((x) => !x)}
-                className={`relative w-full h-8 pl-3 pr-8 text-left text-[14px] leading-5 text-ink-900 bg-white border ${dirty ? "border-ink-500" : "border-ink-200"} rounded hover:border-ink-400 focus:border-primary-500 focus:outline-none`}
+                className={`relative w-full h-8 pl-3 pr-8 text-left text-[14px] leading-5 text-ink-900 bg-white border rounded focus:outline-none ${
+                  error
+                    ? "border-[#B3261E] hover:border-[#B3261E] focus:border-[#B3261E]"
+                    : `${dirty ? "border-ink-500" : "border-ink-200"} hover:border-ink-400 focus:border-primary-500`
+                }`}
               >
                 <span className={arr.length === 0 ? "text-ink-400" : ""}>{displayText}</span>
                 <Icon name={open ? "chevron-up" : "chevron-down"} size={16} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-600" />
@@ -4394,10 +4567,13 @@
             setInitial({ start: start || "", end: end || "", dest: initialDest || "" });
           }
         }, [open, start, end, initialDest, slotId]);
-        const destOpts = destinationOptions.map((d) => ({ value: d.label, label: d.label }));
+        const destOpts = destinationOptions.map((d) => ({ value: d.label, label: d.label, group: d.group }));
         const fieldsFilled = Boolean(startT && endT && dest);
+        const startEndValid = fieldsFilled
+          ? parseTimeToMinutes(startT) < parseTimeToMinutes(endT)
+          : true;
         const hasChanges = startT !== initial.start || endT !== initial.end || dest !== initial.dest;
-        const canSave = fieldsFilled && hasChanges;
+        const canSave = fieldsFilled && startEndValid && hasChanges;
         const handleSave = () => {
           if (!canSave) return;
           onSave({ slotId, day, start: startT, end: endT, dest });
@@ -4420,9 +4596,15 @@
                 <span className="font-semibold">Weekday:</span> {day}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <TimeInput label="Start time" value={startT} onChange={setStartT} />
-                <TimeInput label="End time"   value={endT}   onChange={setEndT}   />
+                <TimePickerInput label="Start time" value={startT} onChange={setStartT} error={fieldsFilled && !startEndValid} />
+                <TimePickerInput label="End time"   value={endT}   onChange={setEndT}   error={fieldsFilled && !startEndValid} />
               </div>
+              {fieldsFilled && !startEndValid && (
+                <div className="flex items-center gap-1 -mt-2 text-[12px] leading-4 text-[#B3261E]">
+                  <Icon name="warning-circle" size={14} className="text-[#B3261E]" />
+                  <span>Start time must be before end time.</span>
+                </div>
+              )}
               <Select
                 label="Destination"
                 value={dest}
@@ -4435,39 +4617,23 @@
         );
       };
 
-      const TimeSlotsTab = ({ timeSlots, setTimeSlots, defaultRoute }) => {
-        const [view, setView] = useState("calendar");
+      const TimeSlotsTab = ({ timeSlots, setTimeSlots, defaultRoute, hasErrors = false, showErrors = false }) => {
+        // If the user lands on this tab while there are validation errors,
+        // open straight into the list view since errors live there. The
+        // tab is conditionally mounted by the parent, so this initial-state
+        // check runs each time the user navigates back to Time Slots.
+        const [view, setView] = useState(hasErrors ? "list" : "calendar");
         const [editingIds, setEditingIds] = useState(() => new Set());
         const [originals, setOriginals] = useState({});
         const [newIds, setNewIds] = useState(() => new Set());
         const [slotModal, setSlotModal] = useState({ open: false, mode: "create", slotId: null, day: "", start: "", end: "", initialDest: "" });
         const overflowDest = defaultRoute || "";
 
-        // Keep refs of the latest editing state so the unmount cleanup can
-        // roll back unsaved changes (new slots + in-flight edits) when the
-        // user navigates away from the Time Slots tab without saving.
-        const editingIdsRef = useRef(editingIds);
-        const originalsRef = useRef(originals);
-        const newIdsRef = useRef(newIds);
-        useEffect(() => { editingIdsRef.current = editingIds; }, [editingIds]);
-        useEffect(() => { originalsRef.current = originals; }, [originals]);
-        useEffect(() => { newIdsRef.current = newIds; }, [newIds]);
-        useEffect(() => {
-          return () => {
-            const newSet = newIdsRef.current;
-            const editSet = editingIdsRef.current;
-            const origMap = originalsRef.current;
-            // If there's nothing to discard, skip.
-            if ((!newSet || newSet.size === 0) && (!editSet || editSet.size === 0)) return;
-            setTimeSlots((arr) => {
-              // Drop any newly-added-but-unsaved slots.
-              let next = (arr || []).filter((s) => !newSet.has(s.id));
-              // Revert any in-flight edits back to their originals.
-              next = next.map((s) => (editSet.has(s.id) && origMap[s.id] ? origMap[s.id] : s));
-              return next;
-            });
-          };
-        }, []);
+        // Note: invalid/unsaved time slots are intentionally NOT discarded
+        // when the user switches tabs. They stay in the list with their
+        // editing-state stroke so the user can come back and finish them.
+        // The Time Slots tab indicator surfaces the missing fields, and the
+        // modal's Save button is disabled while any slot is invalid.
 
         const handleDragCreate = ({ day, start, end }) => {
           setSlotModal({ open: true, mode: "create", slotId: null, day, start, end, initialDest: "" });
@@ -4591,7 +4757,7 @@
           return { ...ts, start, end };
         };
 
-        const destOpts = destinationOptions.map((d) => ({ value: d.label, label: d.label }));
+        const destOpts = destinationOptions.map((d) => ({ value: d.label, label: d.label, group: d.group }));
 
         const addRow = () => {
           const id = `ts-${Date.now()}`;
@@ -4614,38 +4780,60 @@
           setNewIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
           setOriginals((prev) => { const { [id]: _, ...rest } = prev; return rest; });
         };
-        const update = (id, patch) => setTimeSlots((ts) => ts.map((t) => {
-          if (t.id !== id) return t;
-          const next = { ...t, ...patch };
-          if ("start" in patch || "end" in patch) {
-            next.range = `${next.start ?? ""} - ${next.end ?? ""}`;
+        // True when a slot has all required fields filled in correctly:
+        // day(s), destination, and start strictly before end.
+        const isSlotValid = (s) => {
+          if (!s) return false;
+          const hasStart = !!(s.start && String(s.start).trim());
+          const hasEnd   = !!(s.end   && String(s.end).trim());
+          const startEndValid = hasStart && hasEnd
+            ? parseTimeToMinutes(s.start) < parseTimeToMinutes(s.end)
+            : false;
+          return Boolean(
+            normalizeDays(s.days).length > 0 &&
+            s.dest && String(s.dest).trim() &&
+            startEndValid
+          );
+        };
+        const update = (id, patch) => setTimeSlots((ts) => {
+          let updatedSlot = null;
+          const next = ts.map((t) => {
+            if (t.id !== id) return t;
+            const upd = { ...t, ...patch };
+            if ("start" in patch || "end" in patch) {
+              upd.range = `${upd.start ?? ""} - ${upd.end ?? ""}`;
+            }
+            updatedSlot = upd;
+            return upd;
+          });
+          // Auto-commit: when a slot becomes valid, exit editing mode so the
+          // card and field borders return to their resting (non-stroked)
+          // state. Invalid slots stay in editing mode (with stroke).
+          if (updatedSlot && isSlotValid(updatedSlot)) {
+            queueMicrotask(() => {
+              setEditingIds((prev) => {
+                if (!prev.has(id)) return prev;
+                const n = new Set(prev); n.delete(id); return n;
+              });
+              setNewIds((prev) => {
+                if (!prev.has(id)) return prev;
+                const n = new Set(prev); n.delete(id); return n;
+              });
+              setOriginals((prev) => {
+                if (!prev[id]) return prev;
+                const { [id]: _, ...rest } = prev; return rest;
+              });
+              setTimeSlots((arr) => mergeMatchingTimeSlots(arr, id));
+            });
           }
           return next;
-        }));
+        });
         const enterEdit = (slot) => {
           setEditingIds((prev) => {
             if (prev.has(slot.id)) return prev;
             const n = new Set(prev); n.add(slot.id); return n;
           });
           setOriginals((prev) => (prev[slot.id] ? prev : { ...prev, [slot.id]: { ...slot } }));
-        };
-        const saveEdit = (id) => {
-          setTimeSlots((arr) => mergeMatchingTimeSlots(arr, id));
-          setEditingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-          setNewIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-          setOriginals((prev) => { const { [id]: _, ...rest } = prev; return rest; });
-        };
-        const discardEdit = (id) => {
-          if (newIds.has(id)) {
-            del(id);
-            return;
-          }
-          const orig = originals[id];
-          if (orig) {
-            setTimeSlots((ts) => ts.map((t) => (t.id === id ? orig : t)));
-          }
-          setEditingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-          setOriginals((prev) => { const { [id]: _, ...rest } = prev; return rest; });
         };
         const isDirty = (id, field, currentValue) => {
           if (!editingIds.has(id)) return false;
@@ -4753,53 +4941,41 @@
                       const startEndValid = hasStart && hasEnd
                         ? parseTimeToMinutes(ts.start) < parseTimeToMinutes(ts.end)
                         : true;
-                      const canSaveSlot = Boolean(
-                        normalizeDays(ts.days).length > 0 &&
-                        ts.dest && String(ts.dest).trim() &&
-                        hasStart && hasEnd &&
-                        startEndValid
-                      );
-                      const saveTitle = !canSaveSlot
-                        ? (hasStart && hasEnd && !startEndValid
-                            ? "Start time must be before end time"
-                            : "Fill all fields to save")
-                        : "Save changes";
+                      // When the user has come back to the Time Slots tab
+                      // after leaving it with errors present, light up only
+                      // the offending fields with a red stroke. Cards keep
+                      // their existing editing/resting border treatment.
+                      const hasDays = normalizeDays(ts.days).length > 0;
+                      const hasDest = !!(ts.dest && String(ts.dest).trim());
+                      const daysError  = showErrors && !hasDays;
+                      const destError  = showErrors && !hasDest;
+                      const startInvalid = (hasStart && hasEnd && !startEndValid);
+                      const startError = (showErrors && !hasStart) || startInvalid;
+                      const endError   = (showErrors && !hasEnd)   || startInvalid;
                       return (
                         <div key={ts.id} className={`bg-white rounded-lg border ${editing ? "border-ink-500" : "border-transparent"}`}>
                           <div className="flex items-center justify-between px-4 pt-3 pb-2">
                             <h4 className="text-[14px] font-semibold text-ink-900">Slot {idx + 1}</h4>
-                            {editing ? (
-                              <div className="flex items-center gap-1">
-                                <IconButton
-                                  name="check"
-                                  title={saveTitle}
-                                  onClick={canSaveSlot ? () => saveEdit(ts.id) : undefined}
-                                  className={canSaveSlot ? "" : "opacity-40 cursor-not-allowed pointer-events-none"}
-                                />
-                                <IconButton name="close" title="Discard changes" onClick={() => discardEdit(ts.id)} />
-                              </div>
-                            ) : (
-                              <IconButton name="trash" title="Remove" onClick={() => del(ts.id)} />
-                            )}
+                            <IconButton name="trash" title="Remove" onClick={() => del(ts.id)} />
                           </div>
                           <div className="h-px bg-[#E5E6E8] mx-4" />
                           <div className="flex flex-col gap-4 p-4">
                             <div className="grid grid-cols-2 gap-4">
-                              <DaysMultiSelect label="Day(s)" value={ts.days} dirty={daysDirty}
+                              <DaysMultiSelect label="Day(s)" value={ts.days} dirty={daysDirty} error={daysError}
                                 placeholder="Select week day(s)"
                                 onChange={(v) => { ensureEdit(); update(ts.id, { days: v }); }} />
-                              <Select label="Destination" value={ts.dest} dirty={destDirty}
+                              <Select label="Destination" value={ts.dest} dirty={destDirty} error={destError}
                                 placeholder="Select destination"
                                 onChange={(v) => { ensureEdit(); update(ts.id, { dest: v }); }}
                                 options={destOpts} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                              <TimePickerInput label="Start time" value={ts.start} dirty={startDirty} error={hasStart && hasEnd && !startEndValid}
+                              <TimePickerInput label="Start time" value={ts.start} dirty={startDirty} error={startError}
                                 onChange={(v) => { ensureEdit(); update(ts.id, { start: v }); }} />
-                              <TimePickerInput label="End time"   value={ts.end}   dirty={endDirty}   error={hasStart && hasEnd && !startEndValid}
+                              <TimePickerInput label="End time"   value={ts.end}   dirty={endDirty}   error={endError}
                                 onChange={(v) => { ensureEdit(); update(ts.id, { end: v }); }} />
                             </div>
-                            {hasStart && hasEnd && !startEndValid && (
+                            {startInvalid && (
                               <div className="flex items-center gap-1 -mt-2 text-[12px] leading-4 text-[#B3261E]">
                                 <Icon name="warning-circle" size={14} className="text-[#B3261E]" />
                                 <span>Start time must be before end time.</span>
@@ -5263,7 +5439,10 @@
         if (isFixed && isOneTime) datesOk = dates.length > 0;
         if (isFixed && !isOneTime) datesOk = Boolean(month && day);
         if (isMovable) datesOk = Boolean(occurrence && movableDay && month);
-        const slotsOk = !isRange || (slots.length > 0 && slots.every((s) => s.start && s.end));
+        const slotsOk = !isRange || (
+          slots.length > 0 &&
+          slots.every((s) => s.start && s.end && parseTimeToMinutes(s.start) < parseTimeToMinutes(s.end))
+        );
         const validOk = Boolean(name.trim() && destination && datesOk && slotsOk);
         const currentSnap = { name, eventType, dateConfig, month, day, observeWeekday, occurrence, movableDay, dates, timeConfig, slots, destination };
         const dirty = initialRef.current ? JSON.stringify(currentSnap) !== JSON.stringify(initialRef.current) : false;
@@ -5331,16 +5510,23 @@
         const dayMax = [31,29,31,30,31,30,31,31,30,31,30,31][parseInt(month,10)-1] || 31;
         const clamp = (n) => Math.max(1, Math.min(dayMax, n));
 
+        // Wraps onClose to confirm before discarding unsaved changes.
+        const requestClose = () => {
+          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
+            onClose?.();
+          }
+        };
+
         return (
           <Modal
             open={open}
-            onClose={onClose}
+            onClose={requestClose}
             title={title}
             width={524}
             outerHeight={700}
             footer={
               <>
-                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button variant="secondary" onClick={requestClose}>Cancel</Button>
                 <Button variant="primary" onClick={handleSave} disabled={!canSave}>Save</Button>
               </>
             }
@@ -5447,18 +5633,34 @@
                 </div>
                 {isRange && (
                   <div className="flex flex-col gap-2 pt-2">
-                    {slots.map((s, idx) => (
-                      <div key={s.id} className="flex flex-col gap-2 rounded border border-ink-100 bg-ink-50/60 px-3 py-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[14px] font-semibold text-ink-900">Slot {idx + 1}</span>
-                          <IconButton name="trash" title="Remove" onClick={() => removeSlot(s.id)} />
+                    {slots.map((s, idx) => {
+                      const slotHasStart = !!(s.start && String(s.start).trim());
+                      const slotHasEnd = !!(s.end && String(s.end).trim());
+                      const slotRangeValid = slotHasStart && slotHasEnd
+                        ? parseTimeToMinutes(s.start) < parseTimeToMinutes(s.end)
+                        : true;
+                      const slotErr = slotHasStart && slotHasEnd && !slotRangeValid;
+                      return (
+                        <div key={s.id} className="flex flex-col gap-2 rounded border border-ink-100 bg-ink-50/60 px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[14px] font-semibold text-ink-900">Slot {idx + 1}</span>
+                            <IconButton name="trash" title="Remove" onClick={() => removeSlot(s.id)} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <TimePickerInput label="Start time" value={s.start} error={slotErr}
+                              onChange={(v) => updateSlot(s.id, { start: v })} />
+                            <TimePickerInput label="End time"   value={s.end}   error={slotErr}
+                              onChange={(v) => updateSlot(s.id, { end: v })} />
+                          </div>
+                          {slotErr && (
+                            <div className="flex items-center gap-1 text-[12px] leading-4 text-[#B3261E]">
+                              <Icon name="warning-circle" size={14} className="text-[#B3261E]" />
+                              <span>Start time must be before end time.</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <Input label="Start time" value={s.start} onChange={(v) => updateSlot(s.id, { start: v })} placeholder="09:00 AM" />
-                          <Input label="End time"   value={s.end}   onChange={(v) => updateSlot(s.id, { end: v })}   placeholder="05:00 PM" />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div>
                       <button type="button" onClick={addSlot}
                         className="inline-flex items-center gap-1 h-6 pl-1 pr-2 rounded bg-white border border-[#A3B6D7] text-[#244C91] text-[12px] font-bold uppercase tracking-btnSm hover:bg-[#D1DAEB] transition-colors">
@@ -5506,15 +5708,20 @@
         const initSorted = initialRef.current ? [...initialRef.current].sort() : null;
         const curSorted = [...selected].sort();
         const dirty = initSorted ? JSON.stringify(initSorted) !== JSON.stringify(curSorted) : false;
+        const requestClose = () => {
+          if (!dirty || window.confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
+            onClose?.();
+          }
+        };
         return (
           <Modal
             open={open}
-            onClose={onClose}
+            onClose={requestClose}
             title="Location Holiday"
             width={449}
             footer={
               <>
-                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button variant="secondary" onClick={requestClose}>Cancel</Button>
                 <Button variant="primary" onClick={() => onSave(selected)} disabled={!dirty}>Save</Button>
               </>
             }
