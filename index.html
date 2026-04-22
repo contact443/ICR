@@ -412,13 +412,19 @@
       };
 
       // Icon-only action button (e.g. edit/copy/delete row)
-      const IconButton = ({ name, onClick, title, size = 18, className = "" }) => (
+      const IconButton = ({ name, onClick, title, size = 18, className = "", disabled = false }) => (
         <button
           type="button"
-          onClick={onClick}
-          title={title}
+          onClick={disabled ? undefined : onClick}
+          title={disabled ? undefined : title}
           aria-label={title}
-          className={`inline-flex items-center justify-center w-[26px] h-[26px] rounded text-ink-700 hover:bg-ink-50 hover:text-primary-500 transition-colors bvp-focus ${className}`}
+          aria-disabled={disabled || undefined}
+          disabled={disabled}
+          className={`inline-flex items-center justify-center w-[26px] h-[26px] rounded transition-colors bvp-focus ${
+            disabled
+              ? "text-ink-300 cursor-not-allowed"
+              : "text-ink-700 hover:bg-ink-50 hover:text-primary-500"
+          } ${className}`}
         >
           <Icon name={name} size={size} />
         </button>
@@ -3208,7 +3214,13 @@
                 <div className="flex items-center gap-1">
                   <IconButton name="edit"  title="Edit scheduler" onClick={onEdit} />
                   <IconButton name="copy"  title="Duplicate scheduler" onClick={onDuplicate} />
-                  <IconButton name="trash" title="Delete scheduler" onClick={onDelete} />
+                  {scheduler.isDefault ? (
+                    <PortalTooltip text="The default scheduler cannot be deleted">
+                      <IconButton name="trash" title="Delete scheduler" disabled />
+                    </PortalTooltip>
+                  ) : (
+                    <IconButton name="trash" title="Delete scheduler" onClick={onDelete} />
+                  )}
                 </div>
               </div>
             </div>
